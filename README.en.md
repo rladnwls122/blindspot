@@ -143,6 +143,24 @@ twice.
 [`test/attention.test.ts`](test/attention.test.ts) replays the same session
 through both models and asserts where they disagree.
 
+### You have to be able to ask why
+
+A coverage number nobody can interrogate is a number nobody believes. Hovering
+an unread line shows exactly which signals it earned and which it did not:
+
+```
+blindspot — 4/3 pts
+✓ on screen (5000ms)
+✓ focused (5000ms)
+· paused (0×)
+· navigated (0×)
+· edited (0×)
+· re-read (0× returned)
+```
+
+When "but I did read that" collides with the model's verdict, this is where it
+gets settled — and where the model gets corrected. `blindspot.explainOnHover`.
+
 ## Percentage alone is useless
 
 36% unread means nothing on its own. Forty unread lines of README are fine;

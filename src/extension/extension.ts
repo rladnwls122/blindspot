@@ -8,6 +8,7 @@ import type { DiffReport } from '../core/types';
 import type { AiRegions } from '../core/store';
 import { CommitWatcher } from './commitwatch';
 import { Decorations } from './decorations';
+import { EvidenceHover } from './hover';
 import { collectDiff, findGitContext, type GitContext } from './git';
 import { Navigator } from './navigator';
 import { ReportPanel, type PanelMessage } from './panel';
@@ -49,13 +50,18 @@ async function tryStart(context: vscode.ExtensionContext): Promise<boolean> {
   if (controller) return true;
   const ctx = await findRepo();
   if (!ctx) return false;
+  const started = new Controller(context, ctx);
   try {
-    const started = new Controller(context, ctx);
     await started.start();
     controller = started;
     context.subscriptions.push(started);
     return true;
   } catch (err) {
+    // Startup gets partway through before it fails, and what it got through is
+    // a tick interval and a file watcher. Leaving those running would be a
+    // background process nobody can see, in an extension that reported itself
+    // as not running.
+    started.dispose();
     // A review tool that breaks the editor it is measuring has failed twice.
     void vscode.window.showErrorMessage(
       `Blindspot could not start: ${err instanceof Error ? err.message : String(err)}`,
@@ -164,6 +170,16 @@ class Controller implements vscode.Disposable {
       vscode.workspace.onDidSaveTextDocument(() => void this.refresh()),
       vscode.window.onDidChangeVisibleTextEditors(() =>
         this.decorations.apply(this.report, this.git.root),
+      ),
+      vscode.languages.registerHoverProvider(
+        { scheme: 'file' },
+        new EvidenceHover({
+          enabled: () => this.setting('explainOnHover', true),
+          relativePath: (uri) => this.relativePath(uri),
+          report: () => this.report,
+          evidence: (file, line) => this.tracker.getEvidence(file, line),
+          config: () => this.cfg,
+        }),
       ),
     );
 
@@ -494,6 +510,15 @@ class Controller implements vscode.Disposable {
     this.disposed = true;
     if (this.refreshTimer) clearInterval(this.refreshTimer);
     if (this.saveTimer) clearTimeout(this.saveTimer);
+    // Normally VS Code disposes these through context.subscriptions. It cannot
+    // when startup failed before they were registered there, and by then the
+    // tick interval and the file watcher are already running. All four are
+    // idempotent, so disposing them twice costs nothing and orphaning them
+    // costs a background process nobody can see.
+    this.tracker?.dispose();
+    this.commitWatcher?.dispose();
+    this.statusBar.dispose();
+    this.decorations.dispose();
     void this.flush();
   }
 }

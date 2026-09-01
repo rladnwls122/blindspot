@@ -138,6 +138,11 @@
           "default": true,
           "description": "Show live diff coverage in the status bar."
         },
+        "blindspot.explainOnHover": {
+          "type": "boolean",
+          "default": true,
+          "description": "Hovering an unread line explains which review signals it did and did not earn."
+        },
         "blindspot.decorateUnreviewed": {
           "type": "boolean",
           "default": true,

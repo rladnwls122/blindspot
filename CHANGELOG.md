@@ -1,5 +1,21 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- Hovering an unread line explains the verdict: which of the six signals it
+  earned, which it did not, and the risk that ranked it. The model could always
+  explain a single line — `explain()` had no caller — and a coverage number
+  nobody can interrogate is a number nobody believes.
+  `blindspot.explainOnHover`.
+
+### Fixed
+
+- A controller that failed partway through startup left its tick interval and
+  file watcher running — a background process nobody could see, in an extension
+  that had just reported itself as not running.
+
 ## [0.2.0] — 2026-09-01
 
 ### Added

@@ -184,6 +184,24 @@ readCost('const totals = rows.reduce((a, r) => …);') // 1.4  → 420ms 필요
 [`test/attention.test.ts`](test/attention.test.ts)에는 같은 세션을 두 모델로
 재생해 결과가 갈리는 케이스가 단언으로 들어 있습니다.
 
+### 왜 안 읽었다고 하는지 물어볼 수 있어야 한다
+
+반박할 수 없는 커버리지 숫자는 아무도 믿지 않습니다. 안 읽은 줄에 마우스를
+올리면 그 줄이 실제로 얻은 신호와 못 얻은 신호가 그대로 나옵니다.
+
+```
+blindspot — 4/3 pts
+✓ on screen (5000ms)
+✓ focused (5000ms)
+· paused (0×)
+· navigated (0×)
+· edited (0×)
+· re-read (0× returned)
+```
+
+"나 이거 읽었는데"와 모델의 판단이 갈릴 때, 그 자리에서 어느 쪽이 맞는지
+확인할 수 있어야 모델을 고칠 수도 있습니다. `blindspot.explainOnHover`.
+
 ## 퍼센트만으로는 아무 의미가 없다
 
 "36% 안 읽음"은 그 자체로는 아무것도 뜻하지 않습니다.

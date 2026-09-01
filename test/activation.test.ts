@@ -23,6 +23,8 @@ interface Stub {
   warnings: string[];
   errors: string[];
   folders: Array<{ uri: { fsPath: string } }>;
+  /** Make one late step of startup blow up, to test the failure path. */
+  failHoverRegistration: boolean;
   folderListeners: Array<() => void>;
 }
 
@@ -64,6 +66,12 @@ function makeVscode(): any {
       onDidChangeVisibleTextEditors: () => disposable(() => {}),
       createStatusBarItem: () => ({ show() {}, hide() {}, dispose() {}, text: '', tooltip: '' }),
       createTextEditorDecorationType: () => ({ dispose() {} }),
+    },
+    languages: {
+      registerHoverProvider: () => {
+        if (stub.failHoverRegistration) throw new Error('hover registration exploded');
+        return disposable(() => {});
+      },
     },
     commands: {
       registerCommand: (id: string, fn: (...args: any[]) => any) => {
@@ -131,7 +139,14 @@ function tempDir(): string {
 
 describe('activation outside a git repository', { concurrency: 1 }, () => {
   beforeEach(() => {
-    stub = { commands: new Map(), warnings: [], errors: [], folders: [], folderListeners: [] };
+    stub = {
+      commands: new Map(),
+      warnings: [],
+      errors: [],
+      folders: [],
+      folderListeners: [],
+      failHoverRegistration: false,
+    };
   });
   afterEach(teardown);
 
@@ -169,9 +184,30 @@ describe('activation outside a git repository', { concurrency: 1 }, () => {
 
 describe('activation inside a git repository', { concurrency: 1 }, () => {
   beforeEach(() => {
-    stub = { commands: new Map(), warnings: [], errors: [], folders: [], folderListeners: [] };
+    stub = {
+      commands: new Map(),
+      warnings: [],
+      errors: [],
+      folders: [],
+      folderListeners: [],
+      failHoverRegistration: false,
+    };
   });
   afterEach(teardown);
+
+  test('a failure during startup is reported, not swallowed into a dead extension', async () => {
+    const repo = tempDir();
+    execFileSync('git', ['init', '-q'], { cwd: repo });
+    stub.folders = [{ uri: { fsPath: repo } }];
+    stub.failHoverRegistration = true;
+
+    await extension.activate(fakeContext());
+
+    assert.equal(stub.errors.length, 1);
+    assert.match(stub.errors[0], /could not start/i);
+    // And the commands still exist, so the palette explains rather than 404s.
+    assert.equal(stub.commands.has('blindspot.showReport'), true);
+  });
 
   test('a repository in second position in a multi-root workspace is found', async () => {
     const plain = tempDir();
