@@ -69,6 +69,7 @@ function parseStoredLine(entry: unknown): StoredLine | null {
     dwellEvents: num(ev.dwellEvents, 0),
     caretHits: num(ev.caretHits, 0),
     humanEdits: num(ev.humanEdits, 0),
+    revisits: num(ev.revisits, 0),
     provenance: provenance(ev.provenance),
     lastSeen: typeof ev.lastSeen === 'number' ? ev.lastSeen : null,
   };

@@ -6,19 +6,35 @@ answer is wrong, the tool is a lie with a progress bar on it.
 
 ## The current answer
 
-Five observable signals, weighted, with a threshold. The whole model is
+Six observable signals, weighted, with a threshold. The whole model is
 [`evaluate()`](../src/core/evidence.ts), and it is deliberately small enough to
 argue with:
 
 ```
-visible   line was on screen ≥ 300 ms                            +1
+visible   on screen ≥ 300 ms × the line's read cost              +1
 focused   on screen in the active editor, window focused ≥ 800ms +1
-dwell     viewport held still ≥ 1 s while the line was visible   +1
+dwell     viewport held still ≥ 1 s near your focus              +1
 caret     the cursor was placed on it, or a selection covered it +1
 edited    a human keystroke changed it                           +2
+revisit   left, then came back and read it again (needs focused) +1
 
 reviewed  ≥ 3 points
 ```
+
+Three of those lines carry an approximation that
+[`attention.ts`](../src/core/attention.ts) makes explicit, because the editor
+cannot see where you looked and pretending otherwise is the fastest way to
+report coverage nobody earned:
+
+- **visibility is shaped, not broadcast** — credit decays with distance from the
+  caret to a floor, instead of being handed equally to every line in a viewport
+- **a line is not a unit of reading** — fixation counts follow tokens, so the
+  time thresholds scale with the line's estimated token count
+- **dwell is local** — a stationary viewport says you stopped somewhere, not
+  everywhere, so only lines near the focus are credited
+
+All of it is switchable (`focalModel`, `contentScaling`), which is the point:
+a correction you cannot turn off is a belief, not a measurement.
 
 The threshold of 3 is not arbitrary. It is the smallest number that makes all
 three of these true at once, which is the specification the model was written

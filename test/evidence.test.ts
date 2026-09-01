@@ -63,7 +63,7 @@ describe('evaluate', () => {
 
   test('confidence is bounded to [0,1]', () => {
     const s = evaluate(
-      ev({ visibleMs: 1e9, focusedMs: 1e9, dwellEvents: 99, caretHits: 99, humanEdits: 99 }),
+      ev({ visibleMs: 1e9, focusedMs: 1e9, dwellEvents: 99, caretHits: 99, humanEdits: 99, revisits: 99 }),
       cfg,
     );
     assert.equal(s.confidence, 1);
@@ -74,6 +74,29 @@ describe('evaluate', () => {
     const s = evaluate(ev({ visibleMs: 3_600_000, focusedMs: 0 }), cfg);
     assert.equal(s.points, 1);
     assert.equal(s.reviewed, false);
+  });
+
+  test('a re-read line only earns the revisit point on top of focused time', () => {
+    // Scrolled past twice in a background split: two episodes, no focused time.
+    const skimmed = evaluate(ev({ visibleMs: 900, focusedMs: 0, revisits: 3 }), cfg);
+    assert.equal(skimmed.revisit, false);
+    assert.equal(skimmed.reviewed, false);
+
+    // Read, left, came back and read again.
+    const reread = evaluate(ev({ visibleMs: 2000, focusedMs: 2000, revisits: 1 }), cfg);
+    assert.equal(reread.revisit, true);
+    assert.equal(reread.reviewed, true);
+  });
+
+  test('a dense line needs more time on screen than a closing brace', () => {
+    const evidence = ev({ visibleMs: 400, focusedMs: 400 });
+    assert.equal(evaluate(evidence, cfg, '}').visible, true);
+    assert.equal(
+      evaluate(evidence, cfg, 'const totals = rows.reduce((acc, row) => acc + row.amount * row.qty, 0);').visible,
+      false,
+    );
+    // No text supplied: average cost, i.e. the historical flat behaviour.
+    assert.equal(evaluate(evidence, cfg).visible, true);
   });
 
   test('the threshold is configurable without touching the evidence', () => {

@@ -1,5 +1,6 @@
 import { emptyEvidence, type LineEvidence, type Provenance } from './types';
 import { mergeEvidence, strongerProvenance } from './evidence';
+import { focalWeight, type FocalContext } from './attention';
 import { hashLine } from './hash';
 
 export interface StoredLine {
@@ -62,22 +63,51 @@ export class LineLedger {
 
   // ---------------------------------------------------------------- crediting
 
-  addVisible(startLine: number, endLine: number, ms: number, focused: boolean, now: number): void {
+/**
+   * Credit one tick of screen time.
+   *
+   * With a `focus`, each line receives the share of the tick its distance from
+   * the reader's focus makes plausible (see `core/attention.ts`); without one
+   * the tick is spread flat, which is the older viewport model and what the
+   * replay harness uses when it wants to isolate a single variable.
+   *
+   * The same pass detects re-reading: a line that was last seen longer ago
+   * than `revisitGapMs` is coming back in a new viewing episode, and `lastSeen`
+   * already carries everything needed to notice that.
+   */
+  addVisible(
+    startLine: number,
+    endLine: number,
+    ms: number,
+    focused: boolean,
+    now: number,
+    focus?: FocalContext,
+  ): void {
     this.grow(endLine);
+    const gap = focus?.cfg.revisitGapMs ?? 0;
     for (let l = startLine; l <= endLine; l++) {
       const ev = this.lines[l - 1];
       if (!ev) continue;
-      ev.visibleMs += ms;
-      if (focused) ev.focusedMs += ms;
+      const weight = focus ? focalWeight(l, focus.line, focus.cfg) : 1;
+      if (weight <= 0) continue;
+      if (gap > 0 && ev.lastSeen !== null && now - ev.lastSeen >= gap) ev.revisits += 1;
+      ev.visibleMs += ms * weight;
+      if (focused) ev.focusedMs += ms * weight;
       ev.lastSeen = now;
     }
   }
 
-  addDwell(startLine: number, endLine: number, now: number): void {
+  /**
+   * Credit a pause. With a `focus`, only lines near enough to it to have been
+   * inside the reader's perceptual span are credited — a stationary viewport
+   * is evidence that you stopped somewhere, not that you stopped everywhere.
+   */
+  addDwell(startLine: number, endLine: number, now: number, focus?: FocalContext): void {
     this.grow(endLine);
     for (let l = startLine; l <= endLine; l++) {
       const ev = this.lines[l - 1];
       if (!ev) continue;
+      if (focus && focalWeight(l, focus.line, focus.cfg) < focus.cfg.dwellFocalMin) continue;
       ev.dwellEvents += 1;
       ev.lastSeen = now;
     }
@@ -139,6 +169,7 @@ export class LineLedger {
       dwellEvents: 0,
       caretHits: head.caretHits,
       humanEdits: head.humanEdits + (opts.human ? 1 : 0),
+      revisits: 0,
       provenance: opts.human
         ? strongerProvenance(head.provenance, opts.provenance)
         : opts.provenance,
@@ -256,6 +287,7 @@ export function hasEvidence(ev: LineEvidence | undefined): boolean {
     ev.dwellEvents > 0 ||
     ev.caretHits > 0 ||
     ev.humanEdits > 0 ||
+    (ev.revisits ?? 0) > 0 ||
     ev.provenance !== 'unknown'
   );
 }

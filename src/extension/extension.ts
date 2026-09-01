@@ -106,6 +106,12 @@ class Controller implements vscode.Disposable {
       focusedMsForPoint: s.get('focusedMsForPoint', fileCfg.focusedMsForPoint),
       readingSpeedGuard: s.get('readingSpeedGuard', fileCfg.readingSpeedGuard),
       maxLinesPerSecond: s.get('maxLinesPerSecond', fileCfg.maxLinesPerSecond),
+      focalModel: s.get('focalModel', fileCfg.focalModel),
+      focalSpanLines: s.get('focalSpanLines', fileCfg.focalSpanLines),
+      focalDecayLines: s.get('focalDecayLines', fileCfg.focalDecayLines),
+      peripheralFloor: s.get('peripheralFloor', fileCfg.peripheralFloor),
+      contentScaling: s.get('contentScaling', fileCfg.contentScaling),
+      revisitGapMs: s.get('revisitGapMs', fileCfg.revisitGapMs),
     };
   }
 

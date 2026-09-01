@@ -1,7 +1,7 @@
 import type { RiskLevel } from './types';
 
 /**
- * Weights for the five evidence signals. The defaults encode the working
+ * Weights for the six evidence signals. The defaults encode the working
  * definition of "read" this project starts from:
  *
  *     visible                    = 1     (it was on screen)
@@ -9,6 +9,7 @@ import type { RiskLevel } from './types';
  *     dwell (viewport held still)= 1     (you stopped moving)
  *     caret / selection          = 1     (you navigated to it)
  *     human edit                 = 2     (you wrote it)
+ *     revisit (came back later)  = 1     (you read it more than once)
  *
  * with `reviewThresholdPoints = 3`, which makes the three inequalities in the
  * design brief literally true:
@@ -23,6 +24,8 @@ export interface SignalWeights {
   dwell: number;
   caret: number;
   edited: number;
+  /** Came back to the line in a later viewing episode (re-reading). */
+  revisit: number;
 }
 
 export interface RiskRule {
@@ -48,6 +51,30 @@ export interface BlindspotConfig {
   focusedMsForPoint: number;
   /** Ms the viewport must hold still to count as a dwell. */
   dwellMs: number;
+  /**
+   * Weight a tick's visibility credit by distance from the reader's focus
+   * instead of spreading it flat across the viewport. See `core/attention.ts`.
+   */
+  focalModel: boolean;
+  /** Lines either side of the focus that receive full credit. */
+  focalSpanLines: number;
+  /** Distance from the focus at which credit reaches `peripheralFloor`. */
+  focalDecayLines: number;
+  /** Credit floor for lines far from the focus, in [0,1]. */
+  peripheralFloor: number;
+  /** Minimum focal weight a line needs before a dwell is credited to it. */
+  dwellFocalMin: number;
+  /** Scale the time thresholds by how much reading each line actually costs. */
+  contentScaling: boolean;
+  /** Token count treated as one average line's worth of reading. */
+  baselineTokens: number;
+  /** Clamp for the per-line read-cost multiplier. */
+  minReadCost: number;
+  maxReadCost: number;
+  /** Gap after which returning to a line counts as a new viewing episode. */
+  revisitGapMs: number;
+  /** Return visits needed before the revisit point is earned. */
+  revisitsForPoint: number;
   /** Discard visibility credit while scrolling faster than a human reads. */
   readingSpeedGuard: boolean;
   maxLinesPerSecond: number;
@@ -73,10 +100,21 @@ export interface BlindspotConfig {
 
 export const DEFAULT_CONFIG: BlindspotConfig = {
   reviewThresholdPoints: 3,
-  weights: { visible: 1, focused: 1, dwell: 1, caret: 1, edited: 2 },
+  weights: { visible: 1, focused: 1, dwell: 1, caret: 1, edited: 2, revisit: 1 },
   visibleMsForPoint: 300,
   focusedMsForPoint: 800,
   dwellMs: 1000,
+  focalModel: true,
+  focalSpanLines: 5,
+  focalDecayLines: 24,
+  peripheralFloor: 0.2,
+  dwellFocalMin: 0.5,
+  contentScaling: true,
+  baselineTokens: 8,
+  minReadCost: 0.35,
+  maxReadCost: 2.5,
+  revisitGapMs: 20_000,
+  revisitsForPoint: 1,
   readingSpeedGuard: true,
   maxLinesPerSecond: 45,
   riskWeights: { critical: 4, high: 3, medium: 2, low: 1 },
@@ -139,5 +177,5 @@ export function mergeConfig(
 }
 
 export function maxPoints(w: SignalWeights): number {
-  return w.visible + w.focused + w.dwell + w.caret + w.edited;
+  return w.visible + w.focused + w.dwell + w.caret + w.edited + w.revisit;
 }

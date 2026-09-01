@@ -64,7 +64,7 @@ export function buildReport(
       const lineText = text?.[line - 1] ?? '';
       const verdict = classifyLine(diff.file, lineText, cfg);
       const ev = sources.getEvidence(diff.file, line) ?? emptyEvidence();
-      const signals = evaluate(ev, cfg);
+      const signals = evaluate(ev, cfg, lineText);
       const weight = cfg.riskWeights[verdict.level] ?? 1;
       const ai = isMachineAuthored(ev.provenance);
 

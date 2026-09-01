@@ -3,6 +3,7 @@ import * as vscode from 'vscode';
 import type { BlindspotConfig } from '../core/config';
 import { LineLedger, hasEvidence, type StoredLine } from '../core/ledger';
 import { isIgnored } from '../core/coverage';
+import { focusLine } from '../core/attention';
 import type { LineEvidence, Provenance } from '../core/types';
 import type { AiRegions, BlindspotState } from '../core/store';
 import type { GitContext } from './git';
@@ -162,13 +163,24 @@ export class AttentionTracker implements vscode.Disposable {
       if (tooFast) continue;
 
       const isActive = active?.document === editor.document && active.viewColumn === editor.viewColumn;
+      // Where attention plausibly sits inside this viewport. Without an eye
+      // tracker the caret is the only thing the editor knows about it, so a
+      // tick is shaped around the caret rather than handed out flat.
+      const focus = {
+        line: focusLine(
+          editor.selection.active.line + 1,
+          ranges[0].start.line + 1,
+          ranges[ranges.length - 1].end.line + 1,
+        ),
+        cfg: this.cfg,
+      };
       for (const r of ranges) {
-        ledger.addVisible(r.start.line + 1, r.end.line + 1, dt, isActive, now);
+        ledger.addVisible(r.start.line + 1, r.end.line + 1, dt, isActive, now, focus);
       }
 
       if (!view.dwellCredited && now - view.stationarySince >= this.cfg.dwellMs && isActive) {
         for (const r of ranges) {
-          ledger.addDwell(r.start.line + 1, r.end.line + 1, now);
+          ledger.addDwell(r.start.line + 1, r.end.line + 1, now, focus);
         }
         view.dwellCredited = true;
       }
@@ -264,6 +276,7 @@ export class AttentionTracker implements vscode.Disposable {
       ev.focusedMs = Math.max(ev.focusedMs, this.cfg.focusedMsForPoint);
       ev.dwellEvents = Math.max(ev.dwellEvents, 1);
       ev.caretHits = Math.max(ev.caretHits, 1);
+      ev.revisits = Math.max(ev.revisits, this.cfg.revisitsForPoint);
       ev.lastSeen = now;
     }
     this.markDirty();

@@ -36,6 +36,12 @@ export interface LineEvidence {
   caretHits: number;
   /** Times a human keystroke changed this line. */
   humanEdits: number;
+  /**
+   * Times the line came back on screen after being away long enough to count
+   * as a separate viewing episode. Re-reading is one of the few comprehension
+   * signals an IDE can observe without an eye tracker.
+   */
+  revisits: number;
   /** Best-effort authorship signal. */
   provenance: Provenance;
   /** Epoch ms of the last observation, or null if never observed. */
@@ -49,18 +55,20 @@ export function emptyEvidence(provenance: Provenance = 'unknown'): LineEvidence 
     dwellEvents: 0,
     caretHits: 0,
     humanEdits: 0,
+    revisits: 0,
     provenance,
     lastSeen: null,
   };
 }
 
-/** The five signals the scoring model reads, plus the points they earned. */
+/** The six signals the scoring model reads, plus the points they earned. */
 export interface EvidenceSignals {
   visible: boolean;
   focused: boolean;
   dwell: boolean;
   caret: boolean;
   edited: boolean;
+  revisit: boolean;
   points: number;
   /** points / maxPoints, in [0,1]. */
   confidence: number;

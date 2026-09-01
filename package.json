@@ -86,6 +86,38 @@
           "default": 800,
           "description": "Milliseconds a line must be on screen in the active, focused editor to earn the focus point."
         },
+        "blindspot.focalModel": {
+          "type": "boolean",
+          "default": true,
+          "description": "Weight screen time by distance from the caret instead of crediting every line in the viewport equally. Off = the flat viewport model."
+        },
+        "blindspot.focalSpanLines": {
+          "type": "number",
+          "default": 5,
+          "description": "Lines either side of the caret that receive full attention credit."
+        },
+        "blindspot.focalDecayLines": {
+          "type": "number",
+          "default": 24,
+          "description": "Distance from the caret at which attention credit bottoms out."
+        },
+        "blindspot.peripheralFloor": {
+          "type": "number",
+          "default": 0.2,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Smallest share of a tick a line far from the caret can earn."
+        },
+        "blindspot.contentScaling": {
+          "type": "boolean",
+          "default": true,
+          "description": "Scale the time thresholds by how many tokens a line carries, so a closing brace does not cost the same as a dense expression."
+        },
+        "blindspot.revisitGapMs": {
+          "type": "number",
+          "default": 20000,
+          "description": "Time away after which returning to a line counts as re-reading it."
+        },
         "blindspot.readingSpeedGuard": {
           "type": "boolean",
           "default": true,
