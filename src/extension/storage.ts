@@ -89,7 +89,16 @@ const HOOK_MARKER = '# >>> blindspot >>>';
  * card and exits 0 unless the repo config asks for enforcement. A review tool
  * that stops you committing gets uninstalled within a week.
  */
-export function hookScript(): string {
+export function hookScript(bundledCli?: string): string {
+  // The extension's own copy of the CLI, for the common case: installed from
+  // a .vsix, with nothing named `blindspot` on PATH and no node_modules to
+  // find it in. Forward slashes because the hook runs under sh even on Windows.
+  const posix = bundledCli ? bundledCli.split('\\').join('/') : '';
+  const bundled = posix
+    ? `elif [ -f "${posix}" ]; then
+  node "${posix}" check --staged || exit $?
+`
+    : '';
   return `#!/bin/sh
 ${HOOK_MARKER}
 # Installed by the Blindspot VS Code extension.
@@ -98,13 +107,20 @@ if command -v blindspot >/dev/null 2>&1; then
   blindspot check --staged || exit $?
 elif [ -f "$(git rev-parse --show-toplevel)/node_modules/.bin/blindspot" ]; then
   "$(git rev-parse --show-toplevel)/node_modules/.bin/blindspot" check --staged || exit $?
+${bundled}else
+  # Fail loudly rather than pretend the diff was reviewed. Still exit 0: a
+  # missing review tool is not a reason to block anyone's commit.
+  echo "blindspot: CLI not found, skipping review coverage check" >&2
 fi
 # <<< blindspot <<<
 `;
 }
 
-export async function installHook(ctx: GitContext): Promise<{ path: string; action: 'created' | 'appended' | 'present' }> {
-  const hooksDir = path.join(ctx.gitDir, 'hooks');
+export async function installHook(
+  ctx: GitContext,
+  bundledCli?: string,
+): Promise<{ path: string; action: 'created' | 'appended' | 'present' }> {
+  const hooksDir = ctx.hooksDir;
   await fs.mkdir(hooksDir, { recursive: true });
   const hookPath = path.join(hooksDir, 'pre-commit');
 
@@ -116,13 +132,13 @@ export async function installHook(ctx: GitContext): Promise<{ path: string; acti
   }
 
   if (existing === null) {
-    await fs.writeFile(hookPath, hookScript(), { mode: 0o755 });
+    await fs.writeFile(hookPath, hookScript(bundledCli), { mode: 0o755 });
     return { path: hookPath, action: 'created' };
   }
   if (existing.includes(HOOK_MARKER)) {
     return { path: hookPath, action: 'present' };
   }
-  const appended = `${existing.replace(/\s*$/, '')}\n\n${hookScript().replace(/^#!.*\n/, '')}`;
+  const appended = `${existing.replace(/\s*$/, '')}\n\n${hookScript(bundledCli).replace(/^#!.*\n/, '')}`;
   await fs.writeFile(hookPath, appended, { mode: 0o755 });
   return { path: hookPath, action: 'appended' };
 }

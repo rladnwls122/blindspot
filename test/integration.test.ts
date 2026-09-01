@@ -7,6 +7,7 @@ import * as path from 'node:path';
 import { hashLine } from '../src/core/hash';
 import { emptyEvidence } from '../src/core/types';
 import { serializeState, emptyState } from '../src/core/store';
+import { hookScript } from '../src/extension/storage';
 import type { DiffReport } from '../src/core/types';
 
 /**
@@ -209,6 +210,34 @@ describe('cli against a real repository', () => {
     if (process.platform !== 'win32') {
       assert.equal((fs.statSync(hookPath).mode & 0o111) !== 0, true, 'hook must be executable');
     }
+  });
+
+  test('install-hook honours core.hooksPath', () => {
+    // husky sets core.hooksPath by default. Writing to .git/hooks in a repo
+    // that has moved its hook directory installs a hook git will never run,
+    // which is a worse outcome than not installing one.
+    const moved = fs.mkdtempSync(path.join(os.tmpdir(), 'blindspot-hooks-'));
+    git(['config', 'core.hooksPath', moved.split(path.sep).join('/')]);
+    try {
+      const { code } = blindspot(['install-hook']);
+      assert.equal(code, 0);
+      const contents = fs.readFileSync(path.join(moved, 'pre-commit'), 'utf8');
+      assert.match(contents, /blindspot check --staged/);
+    } finally {
+      git(['config', '--unset', 'core.hooksPath']);
+    }
+  });
+
+  test('the hook says something when no CLI can be found', () => {
+    // Installed from a .vsix there is no `blindspot` on PATH and no
+    // node_modules to fall back to. Silently doing nothing would read as
+    // "your diff is fine".
+    const script = hookScript();
+    assert.match(script, /CLI not found/);
+    assert.equal(script.includes('node "'), false, 'no bundled path was supplied');
+
+    const withBundled = hookScript('C:\\ext\\bin\\blindspot.js');
+    assert.match(withBundled, /node "C:\/ext\/bin\/blindspot\.js" check --staged/);
   });
 
   test('install-hook is idempotent', () => {

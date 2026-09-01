@@ -16,6 +16,8 @@ import { installHook, loadAiRegions, loadConfig, loadState, saveState } from './
 import { AttentionTracker, docLines } from './tracker';
 
 const SAVE_DEBOUNCE_MS = 5000;
+/** Above this a file is not read for the report; a diff in it is not reviewable text. */
+const MAX_FILE_BYTES = 2 * 1024 * 1024;
 
 let controller: Controller | undefined;
 
@@ -123,6 +125,10 @@ class Controller implements vscode.Disposable {
   private saveTimer: NodeJS.Timeout | undefined;
   private refreshing = false;
   private disposed = false;
+  private readonly textCache = new Map<
+    string,
+    { mtimeMs: number; size: number; lines: string[] }
+  >();
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -248,9 +254,8 @@ class Controller implements vscode.Disposable {
     const cache = new Map<string, string[] | undefined>();
     const openDocs = new Map<string, vscode.TextDocument>();
     for (const doc of vscode.workspace.textDocuments) {
-      if (doc.uri.scheme !== 'file') continue;
-      const rel = path.relative(this.git.root, doc.uri.fsPath).split(path.sep).join('/');
-      if (rel && !rel.startsWith('..')) openDocs.set(rel, doc);
+      const rel = this.relativePath(doc.uri);
+      if (rel) openDocs.set(rel, doc);
     }
 
     return {
@@ -261,20 +266,57 @@ class Controller implements vscode.Disposable {
         if (doc) {
           lines = docLines(doc);
         } else {
-          try {
-            const abs = path.join(this.git.root, file);
-            if (fs.statSync(abs).size <= 2 * 1024 * 1024) {
-              lines = fs.readFileSync(abs, 'utf8').split('\n');
-            }
-          } catch {
-            lines = undefined;
-          }
+          lines = this.readFileCached(file);
         }
         cache.set(file, lines);
         return lines;
       },
       getEvidence: (file, line) => this.tracker.getEvidence(file, line),
     };
+  }
+
+  /**
+   * Working-tree text for a file nobody has open, cached across refreshes.
+   *
+   * The report is rebuilt every few seconds for as long as the editor is open.
+   * Re-reading every file of a large diff each time is how a background review
+   * tool becomes the reason a laptop fan is running, so a stat (cheap) decides
+   * whether the read (not cheap) is needed at all.
+   */
+  private readFileCached(file: string): string[] | undefined {
+    const abs = path.join(this.git.root, file);
+    let stat: fs.Stats;
+    try {
+      stat = fs.statSync(abs);
+    } catch {
+      this.textCache.delete(file);
+      return undefined;
+    }
+    if (stat.size > MAX_FILE_BYTES) return undefined;
+
+    const hit = this.textCache.get(file);
+    if (hit && hit.mtimeMs === stat.mtimeMs && hit.size === stat.size) return hit.lines;
+
+    try {
+      const lines = fs.readFileSync(abs, 'utf8').split('\n');
+      this.textCache.set(file, { mtimeMs: stat.mtimeMs, size: stat.size, lines });
+      return lines;
+    } catch {
+      this.textCache.delete(file);
+      return undefined;
+    }
+  }
+
+  /**
+   * Repo-relative path for a document, or null when it is not a file inside
+   * this repository. Everything keyed by path — evidence, the report, the
+   * decorations — depends on these agreeing.
+   */
+  private relativePath(uri: vscode.Uri): string | null {
+    if (uri.scheme !== 'file') return null;
+    const rel = path.relative(this.git.root, uri.fsPath).split(path.sep).join('/');
+    if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) return null;
+    return rel;
   }
 
   // ---------------------------------------------------------------- commands
@@ -303,8 +345,20 @@ class Controller implements vscode.Disposable {
 
     push('blindspot.markFileReviewed', async () => {
       const editor = vscode.window.activeTextEditor;
-      if (!editor) return;
-      const rel = path.relative(this.git.root, editor.document.uri.fsPath).split(path.sep).join('/');
+      if (!editor) {
+        void vscode.window.showWarningMessage('Blindspot: open a file to mark it reviewed.');
+        return;
+      }
+      const rel = this.relativePath(editor.document.uri);
+      if (!rel) {
+        // An untitled buffer, a diff view, an output channel, or a file from
+        // another repository. Recording evidence under a path the report will
+        // never look up would silently do nothing.
+        void vscode.window.showWarningMessage(
+          'Blindspot: this file is not a tracked file in this repository.',
+        );
+        return;
+      }
       this.tracker.markReviewed(rel, editor.document.lineCount);
       await this.refresh();
       void vscode.window.showInformationMessage(`Blindspot: marked ${rel} as reviewed.`);
@@ -324,7 +378,10 @@ class Controller implements vscode.Disposable {
 
     push('blindspot.installGitHook', async () => {
       try {
-        const { path: hookPath, action } = await installHook(this.git);
+        const { path: hookPath, action } = await installHook(
+          this.git,
+          path.join(this.context.extensionUri.fsPath, 'bin', 'blindspot.js'),
+        );
         const message =
           action === 'present'
             ? 'Blindspot pre-commit hook is already installed.'

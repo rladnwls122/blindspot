@@ -14,6 +14,13 @@ export interface GitContext {
   root: string;
   /** Absolute path to the git directory (handles worktrees and submodules). */
   gitDir: string;
+  /**
+   * Absolute path to the directory git actually runs hooks from. Not always
+   * `<gitDir>/hooks`: `core.hooksPath` moves it, and husky moves it by default.
+   * Writing to the wrong one installs a hook that silently never runs, which
+   * is worse than not installing one at all.
+   */
+  hooksDir: string;
 }
 
 async function git(cwd: string, args: string[]): Promise<string> {
@@ -26,10 +33,23 @@ export async function findGitContext(cwd: string): Promise<GitContext | null> {
     const root = (await git(cwd, ['rev-parse', '--show-toplevel'])).trim();
     const gitDir = (await git(cwd, ['rev-parse', '--absolute-git-dir'])).trim();
     if (!root || !gitDir) return null;
-    return { root, gitDir };
+    return { root, gitDir, hooksDir: await resolveHooksDir(cwd, root, gitDir) };
   } catch {
     return null;
   }
+}
+
+async function resolveHooksDir(cwd: string, root: string, gitDir: string): Promise<string> {
+  try {
+    const configured = (await git(cwd, ['config', '--get', 'core.hooksPath'])).trim();
+    // git resolves a relative core.hooksPath against the working tree root.
+    if (configured) {
+      return path.isAbsolute(configured) ? configured : path.join(root, configured);
+    }
+  } catch {
+    // `config --get` exits 1 when the key is unset. That is the common case.
+  }
+  return path.join(gitDir, 'hooks');
 }
 
 export interface DiffOptions {
