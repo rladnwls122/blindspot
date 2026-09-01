@@ -1,0 +1,156 @@
+/**
+ * Core domain types. Nothing in `src/core` may import `vscode` — the whole
+ * point of this boundary is that the scoring model can be unit-tested, run in
+ * the CLI, and replayed against recorded sessions without an editor.
+ */
+
+/**
+ * Where a line came from. We cannot honestly claim to know that a line was
+ * written by an LLM, so we record the observable fact instead:
+ *
+ * - `typed`       the line was built up by human keystrokes
+ * - `bulk`        the line arrived in one large machine-speed insertion
+ *                 (an agent write, a paste, a refactor tool, a formatter)
+ * - `declared-ai` some tool explicitly claimed authorship via
+ *                 `.blindspot/ai-regions.json` or a commit trailer
+ * - `unknown`     the line predates tracking, or came from disk
+ */
+export type Provenance = 'typed' | 'bulk' | 'declared-ai' | 'unknown';
+
+/** How dangerous a line is if you get it wrong. */
+export type RiskLevel = 'critical' | 'high' | 'medium' | 'low';
+
+/**
+ * Everything we observed about one line. Deliberately raw: we store the
+ * evidence, not the verdict, so the scoring model can be retuned later and
+ * replayed over history without losing information.
+ */
+export interface LineEvidence {
+  /** Total ms the line spent inside a visible range of any editor. */
+  visibleMs: number;
+  /** Ms visible in the *active* editor while the window itself had focus. */
+  focusedMs: number;
+  /** Times the viewport held still (>= dwellMs) while this line was on screen. */
+  dwellEvents: number;
+  /** Times the caret was placed on, or a selection covered, this line. */
+  caretHits: number;
+  /** Times a human keystroke changed this line. */
+  humanEdits: number;
+  /** Best-effort authorship signal. */
+  provenance: Provenance;
+  /** Epoch ms of the last observation, or null if never observed. */
+  lastSeen: number | null;
+}
+
+export function emptyEvidence(provenance: Provenance = 'unknown'): LineEvidence {
+  return {
+    visibleMs: 0,
+    focusedMs: 0,
+    dwellEvents: 0,
+    caretHits: 0,
+    humanEdits: 0,
+    provenance,
+    lastSeen: null,
+  };
+}
+
+/** The five signals the scoring model reads, plus the points they earned. */
+export interface EvidenceSignals {
+  visible: boolean;
+  focused: boolean;
+  dwell: boolean;
+  caret: boolean;
+  edited: boolean;
+  points: number;
+  /** points / maxPoints, in [0,1]. */
+  confidence: number;
+  reviewed: boolean;
+}
+
+/** One changed line, joined with what we know about it. */
+export interface LineVerdict {
+  /** 1-based line number in the working-tree version of the file. */
+  line: number;
+  signals: EvidenceSignals;
+  risk: RiskLevel;
+  provenance: Provenance;
+  /** True when the line is an addition/modification (not context). */
+  changed: boolean;
+}
+
+/** A contiguous run of unreviewed changed lines — what the UI navigates to. */
+export interface BlindspotHunk {
+  file: string;
+  startLine: number;
+  endLine: number;
+  lineCount: number;
+  risk: RiskLevel;
+  /** Highest-risk reason we could attribute, for the UI. */
+  reason: string;
+  /** Fraction of the hunk that is machine-inserted or declared AI. */
+  aiRatio: number;
+}
+
+export interface FileReport {
+  file: string;
+  changedLines: number;
+  reviewedLines: number;
+  unseenLines: number;
+  coverage: number;
+  /** Coverage counting each line by its risk weight. */
+  weightedCoverage: number;
+  /** Highest risk among the file's changed lines. */
+  risk: RiskLevel;
+  /**
+   * Highest risk among the lines still *unread*. This is what ranks the file:
+   * a file whose only unread lines are comments is not a critical blindspot,
+   * however dangerous the rest of its diff was.
+   */
+  blindspotRisk: RiskLevel;
+  aiLines: number;
+  aiReviewedLines: number;
+  hunks: BlindspotHunk[];
+}
+
+export interface ScoreBreakdown {
+  /** Plain line coverage over the whole diff. */
+  coverage: number;
+  /** Coverage restricted to critical/high risk lines. */
+  critical: number;
+  /** Coverage over lines that are new (added, not modified context). */
+  newCode: number;
+  /** Coverage over machine-inserted / declared-AI lines. */
+  ai: number;
+  /** 0-100 composite. */
+  score: number;
+  /** Which components actually had lines to measure. */
+  measured: { coverage: boolean; critical: boolean; newCode: boolean; ai: boolean };
+}
+
+export interface DiffReport {
+  baseRef: string;
+  generatedAt: number;
+  totalChangedLines: number;
+  reviewedLines: number;
+  unseenLines: number;
+  coverage: number;
+  blindspot: number;
+  score: ScoreBreakdown;
+  files: FileReport[];
+  /** All blindspot hunks across files, worst risk first. */
+  hunks: BlindspotHunk[];
+  /** Highest-risk file that still has unreviewed lines, if any. */
+  worstFile: FileReport | null;
+}
+
+/** A changed-line set for one file, as parsed out of a unified diff. */
+export interface FileDiff {
+  file: string;
+  /** 1-based line numbers in the new file that were added or modified. */
+  addedLines: number[];
+  /** Lines that existed before and were modified (subset of addedLines). */
+  modifiedLines: number[];
+  /** Number of lines deleted with no replacement; tracked for reporting only. */
+  deletedLines: number;
+  binary: boolean;
+}

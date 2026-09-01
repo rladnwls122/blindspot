@@ -1,0 +1,173 @@
+{
+  "name": "blindspot",
+  "displayName": "Blindspot",
+  "description": "Tracks which lines of your diff your eyes have actually rested on, and tells you what you never read before you commit.",
+  "version": "0.1.0",
+  "license": "MIT",
+  "publisher": "rladnwls122",
+  "engines": {
+    "vscode": "^1.85.0",
+    "node": ">=18"
+  },
+  "categories": [
+    "SCM Providers",
+    "Visualization",
+    "Other"
+  ],
+  "keywords": [
+    "code review",
+    "diff",
+    "git",
+    "ai",
+    "attention"
+  ],
+  "main": "./out/src/extension/extension.js",
+  "bin": {
+    "blindspot": "./bin/blindspot.js"
+  },
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "blindspot.showReport",
+        "title": "Blindspot: Show Review Report",
+        "icon": "$(eye)"
+      },
+      {
+        "command": "blindspot.reviewBlindspot",
+        "title": "Blindspot: Review Blindspot (jump to next unseen hunk)"
+      },
+      {
+        "command": "blindspot.toggleDecorations",
+        "title": "Blindspot: Toggle Unreviewed Highlighting"
+      },
+      {
+        "command": "blindspot.markFileReviewed",
+        "title": "Blindspot: Mark Current File As Reviewed"
+      },
+      {
+        "command": "blindspot.resetSession",
+        "title": "Blindspot: Reset Review Evidence"
+      },
+      {
+        "command": "blindspot.installGitHook",
+        "title": "Blindspot: Install pre-commit Hook"
+      }
+    ],
+    "configuration": {
+      "title": "Blindspot",
+      "properties": {
+        "blindspot.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Track review attention in this workspace."
+        },
+        "blindspot.reviewThresholdPoints": {
+          "type": "number",
+          "default": 3,
+          "minimum": 1,
+          "maximum": 6,
+          "description": "Evidence points a line needs before it counts as reviewed. Defaults to 3 = visible + focused + one pause."
+        },
+        "blindspot.dwellMs": {
+          "type": "number",
+          "default": 1000,
+          "description": "How long the viewport must hold still before a visible line earns a dwell point."
+        },
+        "blindspot.visibleMsForPoint": {
+          "type": "number",
+          "default": 300,
+          "description": "Milliseconds a line must be on screen to earn the visibility point."
+        },
+        "blindspot.focusedMsForPoint": {
+          "type": "number",
+          "default": 800,
+          "description": "Milliseconds a line must be on screen in the active, focused editor to earn the focus point."
+        },
+        "blindspot.readingSpeedGuard": {
+          "type": "boolean",
+          "default": true,
+          "description": "Discard visibility credit when the viewport is moving faster than a human can read (fast scrolling)."
+        },
+        "blindspot.maxLinesPerSecond": {
+          "type": "number",
+          "default": 45,
+          "description": "Scroll speed above which lines earn no visibility credit."
+        },
+        "blindspot.showStatusBar": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show live diff coverage in the status bar."
+        },
+        "blindspot.decorateUnreviewed": {
+          "type": "boolean",
+          "default": true,
+          "description": "Mark changed-but-unreviewed lines in the gutter."
+        },
+        "blindspot.baseRef": {
+          "type": "string",
+          "default": "HEAD",
+          "description": "Git ref the diff is measured against."
+        },
+        "blindspot.refreshIntervalMs": {
+          "type": "number",
+          "default": 4000,
+          "description": "How often the diff and report are recomputed."
+        },
+        "blindspot.warnOnCommitBelow": {
+          "type": "number",
+          "default": 70,
+          "description": "Show the pre-commit warning when review coverage drops below this percentage."
+        }
+      }
+    },
+    "menus": {
+      "scm/title": [
+        {
+          "command": "blindspot.showReport",
+          "group": "navigation"
+        }
+      ]
+    },
+    "colors": [
+      {
+        "id": "blindspot.unreviewedBackground",
+        "description": "Background for changed lines you have not reviewed.",
+        "defaults": {
+          "dark": "#f9731633",
+          "light": "#f9731626",
+          "highContrast": "#f9731644"
+        }
+      },
+      {
+        "id": "blindspot.unreviewedBorder",
+        "description": "Gutter marker for changed lines you have not reviewed.",
+        "defaults": {
+          "dark": "#f97316",
+          "light": "#ea580c",
+          "highContrast": "#f97316"
+        }
+      }
+    ]
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "watch": "tsc -p tsconfig.json --watch",
+    "test": "npm run build && node --test \"out/test/*.test.js\"",
+    "demo": "npm run build && node out/demo/simulate.js",
+    "demo:html": "npm run build && node out/demo/simulate.js --html demo/report.html",
+    "clean": "rm -rf out",
+    "demo:page": "npm run build && node out/demo/simulate.js --page demo/index.html"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.4.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rladnwls122/blindspot.git"
+  }
+}

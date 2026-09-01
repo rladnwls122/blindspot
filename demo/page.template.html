@@ -1,0 +1,1039 @@
+<title>Blindspot</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+:root {
+  --ground: #f1f3f6;
+  --surface: #ffffff;
+  --sunk: #e9ecf1;
+  --ink: #13161c;
+  --muted: #5f6875;
+  --faint: #97a0ae;
+  --rule: #dce0e7;
+  --ember: #b45309;
+  --ember-soft: #b4530918;
+  --read: #0f766e;
+  --read-soft: #0f766e14;
+  --danger: #b42318;
+  --shadow: 0 1px 2px #13161c0a, 0 8px 24px #13161c0d;
+
+  --sans: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --serif: "Newsreader", ui-serif, Georgia, "Times New Roman", serif;
+  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground: #0d1015;
+    --surface: #141922;
+    --sunk: #0f141b;
+    --ink: #e3e8ef;
+    --muted: #8b95a5;
+    --faint: #5d6675;
+    --rule: #212934;
+    --ember: #eb9a3e;
+    --ember-soft: #eb9a3e1f;
+    --read: #3cc6ab;
+    --read-soft: #3cc6ab18;
+    --danger: #f2776b;
+    --shadow: 0 1px 2px #00000040, 0 10px 30px #00000040;
+  }
+}
+:root[data-theme="dark"] {
+  --ground: #0d1015;
+  --surface: #141922;
+  --sunk: #0f141b;
+  --ink: #e3e8ef;
+  --muted: #8b95a5;
+  --faint: #5d6675;
+  --rule: #212934;
+  --ember: #eb9a3e;
+  --ember-soft: #eb9a3e1f;
+  --read: #3cc6ab;
+  --read-soft: #3cc6ab18;
+  --danger: #f2776b;
+  --shadow: 0 1px 2px #00000040, 0 10px 30px #00000040;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 16px;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+}
+
+.page {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 0 24px 96px;
+  display: flex;
+  flex-direction: column;
+  gap: 72px;
+}
+.col {
+  max-width: 640px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+section { display: flex; flex-direction: column; gap: 22px; }
+/* Flex children default to min-width:auto, which lets a wide code block push
+   the whole page sideways instead of scrolling inside its own container. */
+section > *, .split > *, .col > * { min-width: 0; }
+.table-wrap { overflow-x: auto; }
+
+/* ---------------------------------------------------------------- type */
+
+h1 {
+  font-family: var(--serif);
+  font-weight: 500;
+  font-size: clamp(2.6rem, 7vw, 4.2rem);
+  line-height: 1.02;
+  letter-spacing: -0.022em;
+  margin: 0;
+  text-wrap: balance;
+}
+h2 {
+  font-family: var(--serif);
+  font-weight: 500;
+  font-size: clamp(1.5rem, 3.4vw, 2rem);
+  line-height: 1.16;
+  letter-spacing: -0.014em;
+  margin: 0;
+  text-wrap: balance;
+}
+h3 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin: 0;
+  letter-spacing: -0.006em;
+}
+p { margin: 0; }
+.lede { font-size: 1.12rem; color: var(--muted); line-height: 1.6; }
+.note { font-size: 0.875rem; color: var(--muted); line-height: 1.6; }
+.eyebrow {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+code, .mono { font-family: var(--mono); font-size: 0.88em; }
+code { background: var(--sunk); padding: 0.1em 0.35em; border-radius: 3px; }
+b, strong { font-weight: 600; }
+em { font-style: normal; color: var(--ember); }
+a { color: inherit; text-decoration-color: var(--faint); text-underline-offset: 3px; }
+a:hover { text-decoration-color: var(--ember); }
+:focus-visible { outline: 2px solid var(--ember); outline-offset: 3px; border-radius: 3px; }
+
+/* ---------------------------------------------------------------- header */
+
+header {
+  padding-top: clamp(56px, 12vh, 120px);
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  max-width: 720px;
+}
+.blame {
+  font-family: var(--serif);
+  font-size: clamp(1.05rem, 2.4vw, 1.35rem);
+  line-height: 1.5;
+  color: var(--muted);
+  max-width: 30ch;
+}
+.blame s { text-decoration: none; color: var(--faint); }
+.blame b { color: var(--ink); font-weight: 500; }
+
+/* ---------------------------------------------------------------- panels */
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  box-shadow: var(--shadow);
+  min-width: 0;
+}
+.split {
+  display: grid;
+  grid-template-columns: minmax(0, 300px) minmax(0, 1fr);
+  gap: 28px;
+  align-items: start;
+}
+@media (max-width: 800px) { .split { grid-template-columns: 1fr; } }
+
+/* the commit card */
+
+.card { padding: 22px 24px 20px; display: flex; flex-direction: column; gap: 18px; }
+.card-head {
+  display: flex; justify-content: space-between; align-items: baseline;
+  border-bottom: 1px solid var(--rule); padding-bottom: 12px;
+}
+.card-head .eyebrow { color: var(--muted); }
+.figures { display: flex; gap: 30px; }
+.figure { display: flex; flex-direction: column; gap: 1px; }
+.figure b {
+  font-family: var(--mono); font-size: 2.5rem; line-height: 1; font-weight: 400;
+  font-variant-numeric: tabular-nums; letter-spacing: -0.03em;
+}
+.figure span { font-size: 0.72rem; color: var(--muted); letter-spacing: 0.02em; }
+.figure.blind b { color: var(--ember); }
+.meter { height: 5px; background: var(--ember-soft); border-radius: 2px; overflow: hidden; }
+.meter i { display: block; height: 100%; background: var(--read); transition: width .28s cubic-bezier(.4,0,.2,1); }
+.counts {
+  display: grid; grid-template-columns: repeat(3, auto); gap: 4px 22px;
+  font-family: var(--mono); font-size: 0.82rem; font-variant-numeric: tabular-nums;
+}
+.counts dt { color: var(--muted); grid-row: 2; }
+.counts dd { margin: 0; grid-row: 1; font-size: 1.15rem; }
+.counts .unseen dd { color: var(--ember); }
+.risk-strip {
+  display: flex; flex-direction: column; gap: 3px;
+  border-left: 2px solid var(--danger); padding: 2px 0 2px 12px;
+}
+.risk-strip .tag {
+  font-family: var(--mono); font-size: 0.7rem; font-weight: 500;
+  letter-spacing: 0.1em; color: var(--danger);
+}
+.risk-strip .where { font-family: var(--mono); font-size: 0.82rem; }
+.risk-strip .what { font-size: 0.82rem; color: var(--muted); }
+.cta {
+  font-family: var(--sans); font-size: 0.85rem; font-weight: 500;
+  padding: 9px 14px; border-radius: 3px; border: 1px solid var(--ink);
+  background: var(--ink); color: var(--surface); cursor: default; text-align: center;
+}
+
+/* ---------------------------------------------------------------- control */
+
+.control { padding: 20px 22px; display: flex; flex-direction: column; gap: 14px; }
+.control label { display: flex; flex-direction: column; gap: 3px; }
+.control .val {
+  font-family: var(--mono); font-size: 0.82rem; color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+input[type="range"] {
+  -webkit-appearance: none; appearance: none; width: 100%; height: 22px;
+  background: transparent; cursor: pointer; margin: 0;
+}
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 2px; background: var(--rule); border-radius: 1px;
+}
+input[type="range"]::-moz-range-track { height: 2px; background: var(--rule); border-radius: 1px; }
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none; width: 15px; height: 15px; margin-top: -6.5px;
+  border-radius: 50%; background: var(--ember); border: 2px solid var(--surface);
+  box-shadow: 0 0 0 1px var(--ember);
+}
+input[type="range"]::-moz-range-thumb {
+  width: 15px; height: 15px; border-radius: 50%; background: var(--ember);
+  border: 2px solid var(--surface); box-shadow: 0 0 0 1px var(--ember);
+}
+.ticks {
+  display: flex; justify-content: space-between;
+  font-family: var(--mono); font-size: 0.68rem; color: var(--faint);
+  font-variant-numeric: tabular-nums; margin-top: -6px;
+}
+.verdict {
+  font-size: 0.85rem; line-height: 1.55; color: var(--muted);
+  border-top: 1px solid var(--rule); padding-top: 12px;
+}
+.verdict b { color: var(--ink); }
+
+/* ---------------------------------------------------------------- signals */
+
+.signals { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+.signals th {
+  text-align: left; font-weight: 500; font-size: 0.7rem; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--faint); padding-bottom: 8px; font-family: var(--mono);
+}
+.signals td { padding: 9px 0; border-top: 1px solid var(--rule); vertical-align: baseline; }
+.signals td:first-child { font-family: var(--mono); font-size: 0.84rem; width: 6.5rem; }
+.signals td:last-child {
+  text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums;
+  width: 3rem; color: var(--muted);
+}
+.signals .desc { color: var(--muted); font-size: 0.87rem; }
+
+.ineq { display: flex; flex-direction: column; gap: 0; }
+.ineq-row {
+  display: grid; grid-template-columns: minmax(0,1fr) auto auto;
+  gap: 16px; align-items: center;
+  padding: 13px 0; border-top: 1px solid var(--rule);
+}
+.ineq-row:last-child { border-bottom: 1px solid var(--rule); }
+.ineq-row .what { font-size: 0.92rem; }
+.ineq-row .pts {
+  font-family: var(--mono); font-size: 0.8rem; color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.pill {
+  font-family: var(--mono); font-size: 0.68rem; font-weight: 500;
+  letter-spacing: 0.08em; text-transform: uppercase;
+  padding: 3px 8px; border-radius: 2px; white-space: nowrap;
+}
+.pill.yes { background: var(--read-soft); color: var(--read); }
+.pill.no { background: var(--ember-soft); color: var(--ember); }
+
+/* ---------------------------------------------------------------- code */
+
+.code-wrap { overflow-x: auto; }
+.code {
+  font-family: var(--mono); font-size: 0.78rem; line-height: 1.75;
+  padding: 14px 0; min-width: 460px;
+}
+.code .ln { display: grid; grid-template-columns: 3.2rem 1fr; }
+.code .n {
+  text-align: right; padding-right: 14px; color: var(--faint);
+  font-variant-numeric: tabular-nums; user-select: none;
+}
+.code .t { white-space: pre; padding-right: 16px; }
+.code .ln.unread { background: var(--ember-soft); }
+.code .ln.unread .t { color: var(--ember); }
+.code .ln.unread .n { color: var(--ember); opacity: .75; }
+.code .ln.read .t { color: var(--ink); }
+.code .ln.read .n { color: var(--faint); }
+.code .ln.dim .t { color: var(--faint); opacity: .38; }
+.tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.tab {
+  font-family: var(--mono); font-size: 0.74rem; padding: 5px 10px;
+  border: 1px solid var(--rule); border-radius: 3px; background: transparent;
+  color: var(--muted); cursor: pointer;
+}
+.tab[aria-selected="true"] { border-color: var(--ink); color: var(--ink); background: var(--surface); }
+.tab:hover { color: var(--ink); }
+.legend {
+  display: flex; gap: 18px; flex-wrap: wrap;
+  font-family: var(--mono); font-size: 0.72rem; color: var(--muted);
+}
+.swatch { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 6px; vertical-align: baseline; }
+
+/* ---------------------------------------------------------------- files */
+
+.files { width: 100%; border-collapse: collapse; font-size: 0.87rem; }
+.files th {
+  text-align: left; font-family: var(--mono); font-weight: 500; font-size: 0.68rem;
+  letter-spacing: 0.1em; text-transform: uppercase; color: var(--faint); padding-bottom: 8px;
+}
+.files th.num, .files td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.files td { padding: 9px 0; border-top: 1px solid var(--rule); }
+.files td.path { font-family: var(--mono); font-size: 0.8rem; }
+.files td.num { font-family: var(--mono); font-size: 0.82rem; }
+.files .sev { border-left: 2px solid var(--danger); padding-left: 10px; }
+.files .cov-bad { color: var(--ember); }
+.files .cov-ok { color: var(--read); }
+.rank { display: flex; flex-direction: column; gap: 14px; }
+.toggle { display: flex; gap: 0; border: 1px solid var(--rule); border-radius: 3px; width: fit-content; overflow: hidden; }
+.toggle button {
+  font-family: var(--mono); font-size: 0.74rem; padding: 7px 13px;
+  border: 0; background: transparent; color: var(--muted); cursor: pointer;
+}
+.toggle button[aria-pressed="true"] { background: var(--ink); color: var(--surface); }
+
+/* ---------------------------------------------------------------- score */
+
+.score-head { display: flex; align-items: baseline; gap: 16px; }
+.score-head b {
+  font-family: var(--mono); font-size: 3.2rem; line-height: 1; font-weight: 400;
+  font-variant-numeric: tabular-nums; letter-spacing: -0.03em;
+}
+.score-bar { font-family: var(--mono); font-size: 1.1rem; letter-spacing: -0.08em; color: var(--ember); }
+.metrics { display: flex; flex-direction: column; }
+.metric {
+  display: grid; grid-template-columns: 8rem minmax(0,1fr) 3rem;
+  gap: 14px; align-items: center; padding: 10px 0; border-top: 1px solid var(--rule);
+}
+.metric:last-child { border-bottom: 1px solid var(--rule); }
+.metric .label { font-size: 0.87rem; }
+.metric .track { height: 4px; background: var(--sunk); border-radius: 2px; overflow: hidden; }
+.metric .track i { display: block; height: 100%; background: var(--read); transition: width .28s cubic-bezier(.4,0,.2,1); }
+.metric.low .track i { background: var(--ember); }
+.metric.crit .track i { background: var(--danger); }
+.metric .pct {
+  text-align: right; font-family: var(--mono); font-size: 0.87rem; font-variant-numeric: tabular-nums;
+}
+
+/* ---------------------------------------------------------------- q&a */
+
+.qa { display: flex; flex-direction: column; }
+.q { border-top: 1px solid var(--rule); padding: 18px 0; display: flex; flex-direction: column; gap: 7px; }
+.q:last-child { border-bottom: 1px solid var(--rule); }
+.q .k {
+  font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.1em;
+  color: var(--faint); text-transform: uppercase;
+}
+.q h3 { font-size: 1rem; font-weight: 500; }
+.q p { font-size: 0.9rem; color: var(--muted); }
+.q .default {
+  font-size: 0.82rem; color: var(--muted); font-family: var(--mono);
+  border-left: 2px solid var(--rule); padding-left: 10px;
+}
+.q.act .k { color: var(--ember); }
+.q.act .default { border-left-color: var(--ember); color: var(--ink); }
+
+footer {
+  border-top: 1px solid var(--rule); padding-top: 26px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.shell {
+  font-family: var(--mono); font-size: 0.8rem; background: var(--sunk);
+  border-radius: 3px; padding: 14px 16px; overflow-x: auto; line-height: 1.8;
+}
+.shell .c { color: var(--faint); }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
+</style>
+
+<div class="page">
+
+<header>
+  <div class="eyebrow">VS Code extension · v0.1</div>
+  <h1>Blindspot</h1>
+  <p class="blame">
+    <s>git blame</s> tells you <b>who wrote it</b>.<br>
+    Blindspot tells you <b>who read it</b>.
+  </p>
+  <p class="lede">
+    코드가 사람이 읽는 속도보다 빨리 만들어지는 시대에, 아무도 측정하지 않는 지표가 하나 있다.
+    테스트가 얼마나 코드를 지나갔는지는 재면서, <em>사람의 눈이 얼마나 지나갔는지는 아무도 안 잰다.</em>
+    Blindspot은 커밋 직전에 그 숫자를 보여준다.
+  </p>
+</header>
+
+<!-- ============================================================ the card -->
+<section>
+  <div class="split">
+    <div class="panel card">
+      <div class="card-head">
+        <span class="eyebrow">Blindspot</span>
+        <span class="mono" style="font-size:.72rem;color:var(--faint)">pre-commit</span>
+      </div>
+      <div class="figures">
+        <div class="figure">
+          <b id="f-cov">64%</b><span>review coverage</span>
+        </div>
+        <div class="figure blind">
+          <b id="f-blind">36%</b><span>blindspot</span>
+        </div>
+      </div>
+      <div class="meter"><i id="f-meter" style="width:64%"></i></div>
+      <dl class="counts">
+        <dd id="f-total">182</dd><dd id="f-read">116</dd><dd class="unseen-v" id="f-unseen">66</dd>
+        <dt>changed</dt><dt>reviewed</dt><dt class="unseen">unseen</dt>
+      </dl>
+      <div class="risk-strip" id="f-risk">
+        <span class="tag">⚠ CRITICAL</span>
+        <span class="where" id="f-risk-where">src/auth/session.ts</span>
+        <span class="what" id="f-risk-what">lines 9–34 unread · authentication / session code</span>
+      </div>
+      <div class="cta">Review Blindspot</div>
+    </div>
+
+    <div class="col">
+      <h2>이 카드의 숫자는 하나의 정의에서 나온다</h2>
+      <p class="note">
+        여기 보이는 모든 값은 실제 스코어링 모델이 실제 세션 데이터(182줄, 5개 파일)를
+        계산한 결과다. 하드코딩된 숫자는 하나도 없다. 아래 슬라이더로 <b>"읽었다"의
+        기준</b>을 바꾸면 카드 전체가 다시 계산된다.
+      </p>
+      <div class="panel control">
+        <label for="thr">
+          <span class="eyebrow">reviewed at</span>
+          <span class="val" id="thr-val">3 points — 화면에 보임 + 멈춤 + 커서 이동</span>
+        </label>
+        <input type="range" id="thr" min="1" max="6" step="1" value="3"
+               aria-describedby="thr-verdict">
+        <div class="ticks"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span></div>
+        <p class="verdict" id="thr-verdict"></p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================== the definition -->
+<section>
+  <div class="col">
+    <div class="eyebrow">the research question</div>
+    <h2>"읽었다"를 어떻게 정의할 것인가</h2>
+    <p class="note">
+      이게 이 프로젝트의 전부다. 나머지(패널, 위험도, git 훅)는 답을 눈에 보이게 만드는
+      장치일 뿐이고, 답이 틀리면 진행바 달린 거짓말이 된다. 모델은 논쟁할 수 있을 만큼
+      작게 유지했다 — 관측 가능한 신호 다섯 개, 가중치, 임계값 하나.
+    </p>
+  </div>
+
+  <div class="split">
+    <div>
+      <table class="signals">
+        <thead>
+          <tr><th>signal</th><th>observed</th><th>pts</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>visible</td><td class="desc">화면에 300ms 이상 떠 있었다</td><td>+1</td></tr>
+          <tr><td>focused</td><td class="desc">활성 에디터에서, 창이 포커스된 채로 800ms 이상</td><td>+1</td></tr>
+          <tr><td>dwell</td><td class="desc">뷰포트가 1초 이상 멈춰 있었다</td><td>+1</td></tr>
+          <tr><td>caret</td><td class="desc">커서를 올렸거나 선택했다</td><td>+1</td></tr>
+          <tr><td>edited</td><td class="desc">사람이 직접 타이핑했다</td><td>+2</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="col">
+      <p class="note">
+        기본 임계값 3점은 임의로 고른 값이 아니다. 아래 세 명제가 <em>동시에 참이 되는
+        가장 작은 값</em>이고, 이 셋은 테스트로 박아뒀다 — 나중에 모델을 바꿔서 하나라도
+        깨지면 그건 튜닝이 아니라 다른 제품이다.
+      </p>
+      <div class="ineq" id="ineq"></div>
+      <p class="note">
+        가중치보다 중요한 건 <b>세지 않는 것들</b>이다. 창이 포커스를 잃으면 아무것도
+        쌓이지 않고(배경 탭에 하루 띄워놔도 1점), 사람이 읽을 수 없는 속도(45줄/초)로
+        스크롤하면 가시성 점수가 0이며, 2초보다 긴 틱은 통째로 버린다 — 노트북을 덮어놓고
+        몇 시간을 "정독"으로 기록하는 걸 막는 유일한 방법이다.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================== the diff -->
+<section>
+  <div class="col">
+    <div class="eyebrow">what it looks like</div>
+    <h2>diff 위에 그려진 어텐션</h2>
+    <p class="note">
+      에이전트가 refresh token 회전 로직을 짰다. 개발자는 위쪽 import와 인터페이스를 읽고,
+      나머지는 "괜찮아 보여서" 스크롤로 넘겼다. 아래는 그 결과다 —
+      <b class="mono" style="color:var(--ember)">주황색이 아무도 읽지 않은 줄</b>.
+      임계값을 바꾸면 여기도 같이 바뀐다.
+    </p>
+  </div>
+
+  <div class="tabs" id="tabs" role="tablist"></div>
+  <div class="panel">
+    <div class="code-wrap"><div class="code" id="code"></div></div>
+  </div>
+  <div class="legend">
+    <span><i class="swatch" style="background:var(--ember)"></i>unreviewed</span>
+    <span><i class="swatch" style="background:var(--read)"></i>reviewed</span>
+    <span id="code-summary"></span>
+  </div>
+</section>
+
+<!-- ============================================================== the risk -->
+<section>
+  <div class="col">
+    <div class="eyebrow">why a percentage alone is useless</div>
+    <h2>36%가 어디의 36%인가</h2>
+    <p class="note">
+      README 40줄을 안 읽은 것과 <code>auth/session.ts</code> 3줄을 안 읽은 것은 같은
+      사건이 아니다. 그래서 모든 줄은 경로(<code>auth/</code>, <code>billing/</code>,
+      <code>migrations/</code>)와 내용(<code>eval(</code>, <code>process.env</code>,
+      문자열로 조립한 SQL)으로 위험도가 매겨지고, 리포트는 <b>양이 아니라 위험도 순</b>으로
+      정렬된다.
+    </p>
+  </div>
+
+  <div class="panel" style="padding:18px 22px">
+    <div class="table-wrap">
+      <table class="files">
+        <thead>
+          <tr>
+            <th>file</th>
+            <th class="num">changed</th>
+            <th class="num">unseen</th>
+            <th class="num">coverage</th>
+            <th>blindspot risk</th>
+          </tr>
+        </thead>
+        <tbody id="files"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="col" style="margin-top:14px">
+    <div class="eyebrow">the case that broke it</div>
+    <p class="note">
+      처음 구현은 <code>안 읽은 줄 수 × 위험도</code>로 곱해서 정렬했다. 그럴듯해 보이지만
+      틀렸고, <b>테스트가 그걸 잡았다</b>. 아래 두 파일만 있는 diff에서 두 정렬을
+      비교해보면 왜인지 보인다 — 이건 지금도
+      <code>test/coverage.test.ts</code>에 회귀 테스트로 남아 있다.
+    </p>
+  </div>
+
+  <div class="rank">
+    <div class="toggle" role="group" aria-label="정렬 기준">
+      <button id="sort-risk" aria-pressed="true">위험도 우선 (현재 구현)</button>
+      <button id="sort-vol" aria-pressed="false">안 읽은 줄 수 × 위험도 (원래 구현)</button>
+    </div>
+    <div class="panel" style="padding:18px 22px">
+      <div class="table-wrap">
+        <table class="files">
+          <thead>
+            <tr>
+              <th class="num">#</th>
+              <th>file</th>
+              <th class="num">unseen</th>
+              <th>risk</th>
+              <th class="num">unseen × risk</th>
+            </tr>
+          </thead>
+          <tbody id="regression"></tbody>
+        </table>
+      </div>
+    </div>
+    <p class="note" id="rank-note"></p>
+  </div>
+</section>
+
+<!-- ============================================================= the score -->
+<section>
+  <div class="split">
+    <div class="col">
+      <div class="eyebrow">the composite</div>
+      <h2>Review Score</h2>
+      <p class="note">
+        커버리지는 <em>무엇에 대한 커버리지였는지</em>에 따라 가중된다. 위 시나리오에서
+        전체 커버리지는 64%지만 critical 코드 커버리지는 24%다 — 점수가 64가 아니라
+        49인 이유가 그것이다.
+      </p>
+      <p class="note">
+        측정할 대상이 없는 항목은 0점 처리하지 않고 <b>빼버린 뒤 가중치를 나머지에
+        재분배</b>한다. critical 코드를 건드리지 않은 diff가 "critical 0%"로 벌점을 받는 건
+        말이 안 되니까.
+      </p>
+      <p class="note" style="color:var(--faint)">
+        이 시나리오는 전부 새로 추가된 줄이라 New code가 Coverage와 같은 값이 된다.
+        기존 줄을 수정한 diff에서는 갈린다.
+      </p>
+    </div>
+    <div class="panel" style="padding:22px 24px">
+      <div class="score-head">
+        <b id="s-score">49</b>
+        <span class="score-bar" id="s-bar">█████░░░░░</span>
+      </div>
+      <div class="metrics" id="metrics" style="margin-top:16px"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ========================================================== the questions -->
+<section>
+  <div class="col">
+    <div class="eyebrow">open questions</div>
+    <h2>결정이 필요한 것들</h2>
+    <p class="note">
+      되돌리기 비싼 것 위주로. 각 항목의 기본값은 이미 코드에 들어가 있으니,
+      그냥 두면 그 선택으로 굴러간다. 전체는 저장소의
+      <code>docs/QUESTIONS.md</code>에 있다.
+    </p>
+  </div>
+  <div class="qa">
+    <div class="q act">
+      <span class="k">Q1 · 액션 필요</span>
+      <h3>레포를 독립시킬 것인가</h3>
+      <p>
+        새 저장소를 만들려 했지만 이 세션의 GitHub 앱 권한으로 레포 생성이 막혀 있었다
+        (403). 그래서 지금은 프로필 저장소의 브랜치 안에 <code>blindspot/</code>
+        디렉터리로 들어가 있다.
+      </p>
+      <p class="default">GitHub에서 빈 레포 하나 만들고 → scripts/extract-repo.sh 실행 (히스토리 유지, 30초)</p>
+    </div>
+    <div class="q">
+      <span class="k">Q2 · 캘리브레이션</span>
+      <h3>임계값 3점이 맞나</h3>
+      <p>
+        <code>visible + focused</code>만으로 2점이라, dwell 1초만 붙으면 커서를 옮기지
+        않아도 3점이 된다. 화면에 띄워놓고 1초 멈춘 것을 "읽었다"로 볼 것인가.
+        위 슬라이더를 4로 올려보면 얼마나 빡빡해지는지 보인다.
+      </p>
+      <p class="default">기본값 3 · 하루 써보고 "안 읽었는데 읽었다고 나온" 케이스가 있는지가 유일한 판단 기준</p>
+    </div>
+    <div class="q">
+      <span class="k">Q3 · 범위</span>
+      <h3>삭제된 줄도 리뷰 대상인가</h3>
+      <p>
+        지금은 아니다 — 없는 줄을 못 읽을 수는 없으니까. 하지만 에이전트가 조용히 지운
+        null 체크야말로 버그가 숨는 곳이다. 제대로 하려면 diff 뷰 안에서의 어텐션 추적이
+        필요하다.
+      </p>
+      <p class="default">추천: 리포트에는 노출하되 점수에는 미반영</p>
+    </div>
+    <div class="q">
+      <span class="k">Q4 · 제품 방향</span>
+      <h3>커밋을 막을 것인가</h3>
+      <p>
+        기본값은 경고만 하고 통과(exit 0)다. 커밋을 막는 리뷰 도구는 일주일 안에
+        <code>--no-verify</code>로 우회되거나 삭제된다. 하지만 팀 도구로 갈 거면 CI에서
+        강제하는 게 자연스럽고, 그러면 "개인 학습 도구"가 아니라 "규정 준수 도구"가 된다.
+      </p>
+      <p class="default">기본은 경고 · 강제는 --min-coverage로 옵트인</p>
+    </div>
+    <div class="q">
+      <span class="k">Q5 · 정직성</span>
+      <h3>무엇을 "AI가 쓴 코드"라 부를 것인가</h3>
+      <p>
+        정직하게 말하면 LLM이 썼는지 우리는 알 수 없다. 관측 가능한 건 <code>typed</code>
+        (한 글자씩), <code>bulk</code>(한 번에 8줄/280자 이상 — 에이전트든 붙여넣기든
+        구분 불가), <code>declared-ai</code>(도구가 명시적으로 선언)뿐이다. 그래서 코드
+        안에서는 <code>machine-written</code>이라 부른다.
+      </p>
+      <p class="default">UI에는 "AI-generated"로 표기 중 · 과장이라고 보면 bulk를 버킷에서 빼면 됨 (한 줄)</p>
+    </div>
+    <div class="q">
+      <span class="k">Q6 · 확장 범위</span>
+      <h3>저자인가 리뷰어인가</h3>
+      <p>
+        지금은 저자의 blindspot을 잰다. 하지만 "LGTM을 3초 만에 누른 리뷰어가 실제로 본
+        줄은 12%"가 훨씬 강한 메시지다. 문제는 그게 GitHub 웹에서 일어난다는 것 —
+        브라우저 확장이 필요하고, 그건 다른 프로젝트다.
+      </p>
+      <p class="default">v0.4의 갈림길 · VS Code 안에 머무를지 브라우저까지 갈지</p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <p class="eyebrow">where it is</p>
+  <p class="note">
+    브랜치 <code>claude/blindspot-vscode-extension-hu8qlo</code> ·
+    디렉터리 <code>blindspot/</code> · 커밋 + 푸시 완료.
+    코어 로직은 <code>src/core/</code>에 있고 에디터에 의존하지 않는다 —
+    "읽었다"의 정의는 에디터 없이도 다시 튜닝하고 재생할 수 있어야 검증이 가능하니까.
+  </p>
+  <div class="shell">
+<span class="c"># 96 unit tests + 18 end-to-end tests against a real git repo</span>
+npm test
+
+<span class="c"># replay the scripted session through the real model</span>
+npm run demo
+
+<span class="c"># run it on your own working tree, right now</span>
+node bin/blindspot.js report
+  </div>
+</footer>
+
+</div>
+
+<script>
+const DATA = __DATA__;
+
+const W = DATA.weights;
+const RISK_RANK = { critical: 4, high: 3, medium: 2, low: 1 };
+const SCORE_W = { coverage: 0.4, critical: 0.3, newCode: 0.15, ai: 0.15 };
+
+const THRESHOLD_LABEL = {
+  1: '1 point — 화면에 스쳐 지나가기만 해도 읽은 것',
+  2: '2 points — 화면에 보이고, 포커스된 에디터 안이면 읽은 것',
+  3: '3 points — 화면에 보임 + 멈춤 + 커서 이동 (기본값)',
+  4: '4 points — 멈춰서 읽고, 커서까지 옮겨야 읽은 것',
+  5: '5 points — 사실상 직접 타이핑한 줄만',
+  6: '6 points — 모든 신호가 다 있어야 함',
+};
+
+const THRESHOLD_NOTE = {
+  1: '스크롤로 훑고 지나간 줄까지 "읽었다"로 세는 정의. 커버리지는 올라가지만 그 숫자는 아무것도 뜻하지 않는다.',
+  2: '뷰포트가 한 번도 멈추지 않아도 통과한다. 브리프의 첫 번째 부등식(스크롤 ≠ 리뷰)이 깨지는 지점.',
+  3: '세 부등식이 모두 성립하는 가장 느슨한 정의. 기본값.',
+  4: '커서를 옮기거나 직접 고친 줄만 인정. 눈으로만 정독한 코드가 blindspot으로 잡히기 시작한다.',
+  5: '자기가 타이핑한 줄만 읽은 것으로 친다. 에이전트가 쓴 코드는 전부 blindspot이 된다.',
+  6: '도달 불가능에 가깝다. 모든 것이 blindspot.',
+};
+
+function pointsOf(sig) {
+  return (sig.visible ? W.visible : 0) + (sig.focused ? W.focused : 0) +
+         (sig.dwell ? W.dwell : 0) + (sig.caret ? W.caret : 0) +
+         (sig.edited ? W.edited : 0);
+}
+
+const LINES = DATA.files.map(f => ({
+  path: f.path,
+  lines: f.lines.map(l => ({ ...l, points: pointsOf(l.signals), severe: l.risk === 'critical' || l.risk === 'high' })),
+}));
+
+function compute(threshold) {
+  const buckets = { coverage: [0, 0], critical: [0, 0], newCode: [0, 0], ai: [0, 0] };
+  const files = [];
+
+  for (const f of LINES) {
+    let reviewed = 0, aiLines = 0, unseen = [];
+    for (const l of f.lines) {
+      const isRead = l.points >= threshold;
+      buckets.coverage[1]++; buckets.newCode[1]++;
+      if (l.severe) buckets.critical[1]++;
+      if (l.ai) { aiLines++; buckets.ai[1]++; }
+      if (isRead) {
+        reviewed++;
+        buckets.coverage[0]++; buckets.newCode[0]++;
+        if (l.severe) buckets.critical[0]++;
+        if (l.ai) buckets.ai[0]++;
+      } else {
+        unseen.push(l);
+      }
+    }
+    const changed = f.lines.length;
+    files.push({
+      path: f.path,
+      changed,
+      reviewed,
+      unseen: changed - reviewed,
+      coverage: changed ? reviewed / changed : 1,
+      aiLines,
+      blindspotRisk: unseen.length ? maxRisk(unseen.map(l => l.risk)) : 'low',
+      risk: maxRisk(f.lines.map(l => l.risk)),
+      hunks: groupHunks(unseen),
+    });
+  }
+
+  const total = buckets.coverage[1], reviewed = buckets.coverage[0];
+  return {
+    total, reviewed, unseen: total - reviewed,
+    coverage: total ? reviewed / total : 1,
+    files,
+    score: composite(buckets),
+  };
+}
+
+function composite(b) {
+  const measured = {
+    coverage: b.coverage[1] > 0, critical: b.critical[1] > 0,
+    newCode: b.newCode[1] > 0, ai: b.ai[1] > 0,
+  };
+  const parts = [['coverage', SCORE_W.coverage], ['critical', SCORE_W.critical],
+                 ['newCode', SCORE_W.newCode], ['ai', SCORE_W.ai]];
+  const active = parts.reduce((s, [k, w]) => s + (measured[k] ? w : 0), 0);
+  let score = 0;
+  if (active > 0) for (const [k, w] of parts) {
+    if (measured[k]) score += (w / active) * ratio(b[k]);
+  }
+  return {
+    coverage: ratio(b.coverage), critical: ratio(b.critical),
+    newCode: ratio(b.newCode), ai: ratio(b.ai),
+    score: Math.round(score * 100), measured,
+  };
+}
+
+const ratio = ([hit, tot]) => (tot > 0 ? hit / tot : 0);
+const pct = v => Math.round(Math.max(0, Math.min(1, v)) * 100);
+const maxRisk = ls => ls.reduce((best, l) => (RISK_RANK[l] > RISK_RANK[best] ? l : best), 'low');
+const bar = v => '█'.repeat(Math.round(Math.max(0, Math.min(1, v)) * 10)) +
+                 '░'.repeat(10 - Math.round(Math.max(0, Math.min(1, v)) * 10));
+
+function groupHunks(unseen) {
+  if (!unseen.length) return [];
+  const sorted = [...unseen].sort((a, b) => a.n - b.n);
+  const out = [];
+  let batch = [sorted[0]];
+  const flush = () => {
+    const risk = maxRisk(batch.map(l => l.risk));
+    out.push({
+      start: batch[0].n, end: batch[batch.length - 1].n, count: batch.length, risk,
+      reason: (batch.find(l => l.risk === risk) || batch[0]).reason,
+    });
+  };
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i].n - batch[batch.length - 1].n <= 3) batch.push(sorted[i]);
+    else { flush(); batch = [sorted[i]]; }
+  }
+  flush();
+  return out;
+}
+
+// ------------------------------------------------------------------ render
+
+let threshold = 3;
+let sortMode = 'risk';
+let activeFile = 'src/auth/session.ts';
+let state = compute(threshold);
+
+const $ = id => document.getElementById(id);
+
+function sortFiles(files) {
+  const copy = [...files];
+  return copy.sort((a, b) => {
+    if ((a.unseen > 0) !== (b.unseen > 0)) return a.unseen > 0 ? -1 : 1;
+    if (!a.unseen) return RISK_RANK[b.risk] - RISK_RANK[a.risk];
+    return RISK_RANK[b.blindspotRisk] - RISK_RANK[a.blindspotRisk] ||
+           b.unseen - a.unseen || a.path.localeCompare(b.path);
+  });
+}
+
+function renderCard() {
+  const cov = pct(state.coverage);
+  $('f-cov').textContent = cov + '%';
+  $('f-blind').textContent = (100 - cov) + '%';
+  $('f-meter').style.width = cov + '%';
+  $('f-total').textContent = state.total;
+  $('f-read').textContent = state.reviewed;
+  $('f-unseen').textContent = state.unseen;
+
+  const ranked = sortFiles(state.files);
+  const worst = ranked.find(f => f.unseen > 0 && (f.blindspotRisk === 'critical' || f.blindspotRisk === 'high'));
+  const strip = $('f-risk');
+  if (worst) {
+    const h = worst.hunks.find(x => x.risk === worst.blindspotRisk) || worst.hunks[0];
+    strip.style.display = '';
+    strip.querySelector('.tag').textContent = '⚠ ' + (worst.blindspotRisk === 'critical' ? 'CRITICAL' : 'HIGH RISK');
+    $('f-risk-where').textContent = worst.path;
+    $('f-risk-what').textContent =
+      'lines ' + h.start + '–' + h.end + ' unread · ' + h.reason;
+  } else {
+    strip.style.display = 'none';
+  }
+}
+
+function renderThreshold() {
+  $('thr-val').textContent = THRESHOLD_LABEL[threshold];
+  const cov = pct(state.coverage);
+  $('thr-verdict').innerHTML =
+    '<b>' + cov + '% reviewed · ' + state.unseen + ' lines unread.</b> ' + THRESHOLD_NOTE[threshold];
+}
+
+function renderIneq() {
+  const cases = [
+    { what: '줄 위를 스크롤로 지나감', sig: { visible: true } },
+    { what: '0.2초 동안 화면에 노출', sig: {} },
+    { what: '보임 + 뷰포트 멈춤 + 커서 이동', sig: { visible: true, focused: true, dwell: true, caret: true } },
+    { what: '직접 타이핑함', sig: { visible: true, focused: true, caret: true, edited: true } },
+  ];
+  $('ineq').innerHTML = cases.map(c => {
+    const p = pointsOf({ visible: !!c.sig.visible, focused: !!c.sig.focused,
+                         dwell: !!c.sig.dwell, caret: !!c.sig.caret, edited: !!c.sig.edited });
+    const ok = p >= threshold;
+    return '<div class="ineq-row"><span class="what">' + c.what + '</span>' +
+      '<span class="pts">' + p + ' pts</span>' +
+      '<span class="pill ' + (ok ? 'yes' : 'no') + '">' + (ok ? 'reviewed' : 'blindspot') + '</span></div>';
+  }).join('');
+}
+
+function renderTabs() {
+  $('tabs').innerHTML = LINES.map(f =>
+    '<button class="tab" role="tab" data-file="' + f.path + '" aria-selected="' +
+    (f.path === activeFile) + '">' + f.path + '</button>').join('');
+  for (const b of document.querySelectorAll('.tab')) {
+    b.addEventListener('click', () => { activeFile = b.dataset.file; renderTabs(); renderCode(); });
+  }
+}
+
+function renderCode() {
+  const file = LINES.find(f => f.path === activeFile);
+  const rows = file.lines.map(l => {
+    const isRead = l.points >= threshold;
+    const cls = isRead ? 'read' : 'unread';
+    return '<div class="ln ' + cls + '"><span class="n">' + l.n + '</span>' +
+      '<span class="t">' + escapeHtml(l.text || ' ') + '</span></div>';
+  });
+  $('code').innerHTML = rows.join('');
+
+  const f = state.files.find(x => x.path === activeFile);
+  $('code-summary').textContent =
+    f.unseen + ' / ' + f.changed + ' unread · ' + pct(f.coverage) + '% coverage' +
+    (f.aiLines ? ' · ' + pct(f.aiLines / f.changed) + '% machine-written' : '');
+}
+
+/**
+ * The regression case, exactly as it appears in test/coverage.test.ts:
+ * forty unread lines of documentation against three unread lines of auth code.
+ * The product form puts the harmless one first; that is the bug.
+ */
+const REGRESSION = [
+  { path: 'README.md', unseen: 40, risk: 'low' },
+  { path: 'src/auth/session.ts', unseen: 3, risk: 'critical' },
+];
+
+function renderRegression() {
+  const ranked = [...REGRESSION].sort((a, b) =>
+    sortMode === 'volume'
+      ? b.unseen * RISK_RANK[b.risk] - a.unseen * RISK_RANK[a.risk]
+      : RISK_RANK[b.risk] - RISK_RANK[a.risk] || b.unseen - a.unseen);
+
+  $('regression').innerHTML = ranked.map((f, i) => {
+    const severe = f.risk === 'critical' || f.risk === 'high';
+    return '<tr>' +
+      '<td class="num" style="color:var(--faint)">' + (i + 1) + '</td>' +
+      '<td class="path' + (severe ? ' sev' : '') + '">' + escapeHtml(f.path) + '</td>' +
+      '<td class="num" style="color:var(--ember)">' + f.unseen + '</td>' +
+      '<td class="mono" style="font-size:.76rem;color:' + (severe ? 'var(--danger)' : 'var(--muted)') + '">' +
+        f.risk + '</td>' +
+      '<td class="num" style="color:var(--faint)">' + f.unseen * RISK_RANK[f.risk] + '</td>' +
+    '</tr>';
+  }).join('');
+
+  $('rank-note').innerHTML = sortMode === 'volume'
+    ? '곱셈으로 정렬하면 <b>README가 1위</b>가 된다. 40 × 1 = 40이 3 × 4 = 12를 이기니까. ' +
+      '커밋 직전에 가장 먼저 보게 되는 것이 문서 오타가 되고, 안 읽은 인증 코드는 그 아래로 밀린다.'
+    : '위험도를 먼저 보면 <b>auth가 1위</b>다. 양은 같은 위험도 안에서만 순서를 정한다. ' +
+      '이 도구가 존재하는 이유가 바로 이 판단이라서, 양이 위험도를 이기는 일은 없어야 한다.';
+}
+
+function renderFiles() {
+  const ranked = sortFiles(state.files);
+  $('files').innerHTML = ranked.map(f => {
+    const severe = f.unseen > 0 && (f.blindspotRisk === 'critical' || f.blindspotRisk === 'high');
+    const covCls = f.coverage >= 0.9 ? 'cov-ok' : f.coverage < 0.7 ? 'cov-bad' : '';
+    return '<tr>' +
+      '<td class="path' + (severe ? ' sev' : '') + '">' + escapeHtml(f.path) + '</td>' +
+      '<td class="num">' + f.changed + '</td>' +
+      '<td class="num" style="color:' + (f.unseen ? 'var(--ember)' : 'var(--faint)') + '">' + f.unseen + '</td>' +
+      '<td class="num ' + covCls + '">' + pct(f.coverage) + '%</td>' +
+      '<td class="mono" style="font-size:.76rem;color:' + (severe ? 'var(--danger)' : 'var(--muted)') + '">' +
+        (f.unseen ? f.blindspotRisk : '—') + '</td>' +
+    '</tr>';
+  }).join('');
+}
+
+function renderScore() {
+  const s = state.score;
+  $('s-score').textContent = s.score;
+  $('s-bar').textContent = bar(s.score / 100);
+  const rows = [
+    ['Coverage', s.coverage, true],
+    ['Critical', s.critical, s.measured.critical],
+    ['New code', s.newCode, s.measured.newCode],
+    ['AI-generated', s.ai, s.measured.ai],
+  ];
+  $('metrics').innerHTML = rows.map(([label, v, measured]) => {
+    const cls = !measured ? '' : v >= 0.9 ? '' : v >= 0.5 ? 'low' : 'crit';
+    return '<div class="metric ' + cls + '">' +
+      '<span class="label">' + label + '</span>' +
+      '<span class="track"><i style="width:' + (measured ? pct(v) : 0) + '%"></i></span>' +
+      '<span class="pct">' + (measured ? pct(v) + '%' : '—') + '</span></div>';
+  }).join('');
+}
+
+function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, c =>
+    c === '&' ? '&amp;' : c === '<' ? '&lt;' : c === '>' ? '&gt;' : c === '"' ? '&quot;' : '&#39;');
+}
+
+function renderAll() {
+  state = compute(threshold);
+  renderCard(); renderThreshold(); renderIneq(); renderCode(); renderFiles(); renderRegression(); renderScore();
+}
+
+$('thr').addEventListener('input', e => {
+  threshold = Number(e.target.value);
+  renderAll();
+});
+
+$('sort-risk').addEventListener('click', () => {
+  sortMode = 'risk';
+  $('sort-risk').setAttribute('aria-pressed', 'true');
+  $('sort-vol').setAttribute('aria-pressed', 'false');
+  renderRegression();
+});
+$('sort-vol').addEventListener('click', () => {
+  sortMode = 'volume';
+  $('sort-risk').setAttribute('aria-pressed', 'false');
+  $('sort-vol').setAttribute('aria-pressed', 'true');
+  renderRegression();
+});
+
+renderTabs();
+renderAll();
+</script>

@@ -1,0 +1,5 @@
+node_modules/
+out/
+*.vsix
+demo/report.html
+.blindspot/state.json
