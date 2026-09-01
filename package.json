@@ -2,7 +2,7 @@
   "name": "blindspot",
   "displayName": "Blindspot",
   "description": "Tracks which lines of your diff your eyes have actually rested on, and tells you what you never read before you commit.",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "license": "MIT",
   "publisher": "rladnwls122",
   "icon": "media/icon.png",

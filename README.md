@@ -250,8 +250,8 @@ provenance는 모델에 대한 추측이 아니라 실제로 관측된 것만 �
 
 ```bash
 npm install
-npm run package                              # blindspot-0.3.0.vsix 생성
-code --install-extension blindspot-0.3.0.vsix
+npm run package                              # blindspot-0.3.1.vsix 생성
+code --install-extension blindspot-0.3.1.vsix
 ```
 
 git 저장소가 열려 있으면 바로 상태 표시줄에 커버리지가 뜹니다.
@@ -262,7 +262,7 @@ git 저장소가 열려 있으면 바로 상태 표시줄에 커버리지가 뜹
 ```bash
 npm install
 npm run build
-npm test           # 166개 테스트 (모델, CLI, 실제 git 저장소, 그리고 확장 자체)
+npm test           # 169개 테스트 (모델, CLI, 실제 git 저장소, 그리고 확장 자체)
 npm run demo       # 스크립트 세션을 실제 모델로 재생
 npm run demo:page  # demo/index.html 재생성 — 인터랙티브 버전
 npm run icon       # media/icon.png 재생성
@@ -368,7 +368,7 @@ demo/            스크립트 세션을 실제 모델로 재생
 
 ## 상태
 
-v0.3 — 모델, 보고서, 패널, hover 설명, CLI, 훅이 모두 동작하고, `.vsix`로
+v0.3.1 — 모델, 보고서, 패널, hover 설명, CLI, 훅이 모두 동작하고, `.vsix`로
 설치해 실제로 쓸 수 있습니다. 무엇이 바뀌었는지는 [`CHANGELOG.md`](CHANGELOG.md)에 있습니다.
 다음 계획은 [`docs/PLAN.md`](docs/PLAN.md), 아직 열려 있는 결정은
 [`docs/QUESTIONS.md`](docs/QUESTIONS.md)를 보세요.
