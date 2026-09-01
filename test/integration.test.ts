@@ -204,7 +204,11 @@ describe('cli against a real repository', () => {
     const hookPath = path.join(repo, '.git', 'hooks', 'pre-commit');
     const contents = fs.readFileSync(hookPath, 'utf8');
     assert.match(contents, /blindspot check --staged/);
-    assert.equal((fs.statSync(hookPath).mode & 0o111) !== 0, true, 'hook must be executable');
+    // Windows has no executable bit — git runs hooks through sh there regardless,
+    // so asserting the mode would only ever fail on the platform, not on the code.
+    if (process.platform !== 'win32') {
+      assert.equal((fs.statSync(hookPath).mode & 0o111) !== 0, true, 'hook must be executable');
+    }
   });
 
   test('install-hook is idempotent', () => {

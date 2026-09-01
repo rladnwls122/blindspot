@@ -183,15 +183,29 @@ Provenance records what was actually observed, never a guess about a model:
 
 ## Install
 
+To use it — build a `.vsix` and install that:
+
+```bash
+npm install
+npm run package                              # produces blindspot-0.1.0.vsix
+code --install-extension blindspot-0.1.0.vsix
+```
+
+Open a git repository and coverage appears in the status bar. Outside one the
+commands still register and tell you what is missing.
+
+To work on it:
+
 ```bash
 npm install
 npm run build
-npm test           # 146 tests, 18 of them against a real git repository
+npm test           # 150 tests, 18 of them against a real git repository
 npm run demo       # replay a scripted session through the real model
 npm run demo:page  # regenerate demo/index.html — the interactive version
+npm run icon       # regenerate media/icon.png
 ```
 
-To run the extension: open this folder in VS Code and press <kbd>F5</kbd>.
+To debug the extension: open this folder in VS Code and press <kbd>F5</kbd>.
 
 [`demo/index.html`](demo/index.html) is the same report with the threshold made
 adjustable: move the slider and every number on the page — coverage, the file

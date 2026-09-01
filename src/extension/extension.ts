@@ -19,23 +19,95 @@ const SAVE_DEBOUNCE_MS = 5000;
 
 let controller: Controller | undefined;
 
+/** Every command the extension contributes, in package.json order. */
+const COMMAND_IDS = [
+  'blindspot.showReport',
+  'blindspot.reviewBlindspot',
+  'blindspot.toggleDecorations',
+  'blindspot.markFileReviewed',
+  'blindspot.resetSession',
+  'blindspot.installGitHook',
+] as const;
+
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
-  const folder = vscode.workspace.workspaceFolders?.[0];
-  if (!folder) return;
-
-  const ctx = await findGitContext(folder.uri.fsPath);
-  if (!ctx) {
-    // Not a git repo: nothing to diff against, so there is nothing to measure.
-    return;
+  if (!(await tryStart(context))) {
+    // No repo yet, or startup failed. Register the commands anyway so the
+    // palette explains itself instead of answering "command not found", and
+    // retry when the workspace changes — `git init` in an open folder is a
+    // completely ordinary thing to do.
+    installFallbackCommands(context);
+    context.subscriptions.push(
+      vscode.workspace.onDidChangeWorkspaceFolders(() => void tryStart(context)),
+    );
   }
+}
 
-  controller = new Controller(context, ctx);
-  await controller.start();
-  context.subscriptions.push(controller);
+/** Bring the controller up, or explain why it could not come up. */
+async function tryStart(context: vscode.ExtensionContext): Promise<boolean> {
+  if (controller) return true;
+  const ctx = await findRepo();
+  if (!ctx) return false;
+  try {
+    const started = new Controller(context, ctx);
+    await started.start();
+    controller = started;
+    context.subscriptions.push(started);
+    return true;
+  } catch (err) {
+    // A review tool that breaks the editor it is measuring has failed twice.
+    void vscode.window.showErrorMessage(
+      `Blindspot could not start: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return false;
+  }
+}
+
+/**
+ * First workspace folder that is inside a git repository. Checking every folder
+ * rather than only the first is what makes a multi-root workspace with the repo
+ * in second position work at all.
+ */
+async function findRepo(): Promise<GitContext | null> {
+  for (const folder of vscode.workspace.workspaceFolders ?? []) {
+    const ctx = await findGitContext(folder.uri.fsPath);
+    if (ctx) return ctx;
+  }
+  return null;
+}
+
+let fallbackCommands: vscode.Disposable[] = [];
+
+function disposeFallbackCommands(): void {
+  for (const d of fallbackCommands) d.dispose();
+  fallbackCommands = [];
+}
+
+function installFallbackCommands(context: vscode.ExtensionContext): void {
+  if (fallbackCommands.length > 0) return;
+  for (const id of COMMAND_IDS) {
+    fallbackCommands.push(
+      vscode.commands.registerCommand(id, async () => {
+        // The repo may have appeared since activation; try before complaining.
+        if (await tryStart(context)) {
+          await vscode.commands.executeCommand(id);
+          return;
+        }
+        void vscode.window.showWarningMessage(
+          vscode.workspace.workspaceFolders?.length
+            ? 'Blindspot needs a git repository — this workspace is not inside one. Review coverage is measured against a diff.'
+            : 'Blindspot needs an open folder inside a git repository.',
+        );
+      }),
+    );
+  }
+  context.subscriptions.push({ dispose: disposeFallbackCommands });
 }
 
 export function deactivate(): Promise<void> | void {
-  return controller?.flush();
+  const pending = controller?.flush();
+  controller = undefined;
+  disposeFallbackCommands();
+  return pending;
 }
 
 class Controller implements vscode.Disposable {
@@ -208,6 +280,8 @@ class Controller implements vscode.Disposable {
   // ---------------------------------------------------------------- commands
 
   private registerCommands(): void {
+    // Fallback handlers own these ids until we replace them.
+    disposeFallbackCommands();
     const push = (id: string, fn: (...args: any[]) => any) =>
       this.context.subscriptions.push(vscode.commands.registerCommand(id, fn));
 

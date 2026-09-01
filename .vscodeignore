@@ -1,5 +1,8 @@
 .vscode/**
 .github/**
+scripts/**
+*.vsix
+README.en.md
 node_modules/**
 src/**
 test/**

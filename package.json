@@ -5,6 +5,11 @@
   "version": "0.1.0",
   "license": "MIT",
   "publisher": "rladnwls122",
+  "icon": "media/icon.png",
+  "galleryBanner": {
+    "color": "#0d1117",
+    "theme": "dark"
+  },
   "engines": {
     "vscode": "^1.85.0",
     "node": ">=18"
@@ -187,15 +192,19 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "watch": "tsc -p tsconfig.json --watch",
-    "test": "npm run build && node --test \"out/test/*.test.js\"",
+    "test": "npm run build && node --test out/test/",
     "demo": "npm run build && node out/demo/simulate.js",
     "demo:html": "npm run build && node out/demo/simulate.js --html demo/report.html",
     "clean": "rm -rf out",
+    "icon": "node scripts/make-icon.mjs",
+    "package": "npm run build && vsce package --no-dependencies",
+    "publish": "npm run build && vsce publish --no-dependencies",
     "demo:page": "npm run build && node out/demo/simulate.js --page demo/index.html"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
     "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.9.2",
     "typescript": "^5.4.0"
   },
   "repository": {

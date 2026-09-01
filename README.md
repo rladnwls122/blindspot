@@ -226,15 +226,29 @@ provenance는 모델에 대한 추측이 아니라 실제로 관측된 것만 �
 
 ## 설치
 
+쓰려는 경우 — `.vsix`를 만들어 설치합니다.
+
+```bash
+npm install
+npm run package                              # blindspot-0.1.0.vsix 생성
+code --install-extension blindspot-0.1.0.vsix
+```
+
+git 저장소가 열려 있으면 바로 상태 표시줄에 커버리지가 뜹니다.
+저장소가 아닌 폴더에서도 명령은 등록되며, 무엇이 없는지 알려 줍니다.
+
+개발하려는 경우:
+
 ```bash
 npm install
 npm run build
-npm test           # 146개 테스트, 그중 18개는 진짜 git 저장소를 상대로 실행
+npm test           # 150개 테스트, 그중 18개는 진짜 git 저장소를 상대로 실행
 npm run demo       # 스크립트 세션을 실제 모델로 재생
 npm run demo:page  # demo/index.html 재생성 — 인터랙티브 버전
+npm run icon       # media/icon.png 재생성
 ```
 
-확장을 실행하려면 이 폴더를 VS Code로 열고 <kbd>F5</kbd>를 누르세요.
+확장을 디버그하려면 이 폴더를 VS Code로 열고 <kbd>F5</kbd>를 누르세요.
 
 [`demo/index.html`](demo/index.html)은 같은 보고서에 임계값 슬라이더를 붙인
 것입니다. 슬라이더를 움직이면 커버리지, 파일 랭킹, Review Score가 전부
