@@ -207,8 +207,8 @@ To use it — build a `.vsix` and install that:
 
 ```bash
 npm install
-npm run package                              # produces blindspot-0.2.0.vsix
-code --install-extension blindspot-0.2.0.vsix
+npm run package                              # produces blindspot-0.3.0.vsix
+code --install-extension blindspot-0.3.0.vsix
 ```
 
 Open a git repository and coverage appears in the status bar. Outside one the
@@ -219,7 +219,7 @@ To work on it:
 ```bash
 npm install
 npm run build
-npm test           # 160 tests: the model, the CLI, a real git repo, the extension
+npm test           # 166 tests: the model, the CLI, a real git repo, the extension
 npm run demo       # replay a scripted session through the real model
 npm run demo:page  # regenerate demo/index.html — the interactive version
 npm run icon       # regenerate media/icon.png
@@ -323,8 +323,8 @@ validated.
 
 ## Status
 
-v0.2 — the model, the report, the panel, the CLI and the hook all work, and
-it installs from a `.vsix` and is usable. See [`CHANGELOG.md`](CHANGELOG.md).
+v0.3 — the model, the report, the panel, the hover explanation, the CLI and
+the hook all work, and it installs from a `.vsix` and is usable. See [`CHANGELOG.md`](CHANGELOG.md).
 See [`docs/PLAN.md`](docs/PLAN.md) for what is next and
 [`docs/QUESTIONS.md`](docs/QUESTIONS.md) for the decisions still open.
 
