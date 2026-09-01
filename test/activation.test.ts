@@ -129,7 +129,7 @@ function tempDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'blindspot-activate-'));
 }
 
-describe('activation outside a git repository', () => {
+describe('activation outside a git repository', { concurrency: 1 }, () => {
   beforeEach(() => {
     stub = { commands: new Map(), warnings: [], errors: [], folders: [], folderListeners: [] };
   });
@@ -167,7 +167,7 @@ describe('activation outside a git repository', () => {
   });
 });
 
-describe('activation inside a git repository', () => {
+describe('activation inside a git repository', { concurrency: 1 }, () => {
   beforeEach(() => {
     stub = { commands: new Map(), warnings: [], errors: [], folders: [], folderListeners: [] };
   });

@@ -199,7 +199,7 @@ To work on it:
 ```bash
 npm install
 npm run build
-npm test           # 150 tests, 18 of them against a real git repository
+npm test           # 160 tests: the model, the CLI, a real git repo, the extension
 npm run demo       # replay a scripted session through the real model
 npm run demo:page  # regenerate demo/index.html — the interactive version
 npm run icon       # regenerate media/icon.png

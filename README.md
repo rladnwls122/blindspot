@@ -242,7 +242,7 @@ git 저장소가 열려 있으면 바로 상태 표시줄에 커버리지가 뜹
 ```bash
 npm install
 npm run build
-npm test           # 150개 테스트, 그중 18개는 진짜 git 저장소를 상대로 실행
+npm test           # 160개 테스트 (모델, CLI, 실제 git 저장소, 그리고 확장 자체)
 npm run demo       # 스크립트 세션을 실제 모델로 재생
 npm run demo:page  # demo/index.html 재생성 — 인터랙티브 버전
 npm run icon       # media/icon.png 재생성

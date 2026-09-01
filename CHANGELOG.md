@@ -23,36 +23,39 @@
   eye-tracking literature it approximates. English moved to `README.en.md`.
 - `npm run package` / `npm run publish` (`@vscode/vsce`), a generated
   marketplace icon (`npm run icon`), and CI on Linux and Windows.
-
 - `blindspot --version`.
+- Tests for the parts that need `vscode` and therefore had none: activation
+  (`test/activation.test.ts`) and the attention collector itself
+  (`test/tracker.test.ts`), which now asserts the guards the honesty of the
+  whole tool rests on — nothing counted while the window is unfocused, nothing
+  counted while scrolling faster than anyone reads, no credit for the far edge
+  of a tall viewport, and a closed laptop is not an hour of diligent reading.
 
 ### Fixed
-
-- The pre-commit hook was always written to `.git/hooks`, so in a repository
-  that sets `core.hooksPath` — which husky does by default — it installed a
-  hook git would never run. The hooks directory now comes from git config.
-- The hook did nothing at all when neither `blindspot` was on PATH nor
-  `node_modules` held a copy, which is the situation right after installing
-  from a `.vsix`. It now falls back to the extension's bundled CLI, and says
-  so on stderr when it can find nothing — a silent hook reads as "your diff
-  is fine".
-- File text for the report is cached across refreshes and invalidated by mtime
-  and size. A large diff now costs a stat per file every few seconds instead
-  of a full read.
-- Marking a file reviewed no longer records evidence under a path the report
-  cannot look up (an untitled buffer, a diff view, a file from another
-  repository).
-- A mistyped CLI flag, an unknown command, or a non-numeric threshold is an
-  error (exit 2) instead of a silent full run against different settings than
-  the caller asked for.
 
 - Commands no longer fail with "command not found" outside a git repository.
   They register regardless, explain what is missing, and retry once a
   repository appears — `git init` in an already-open folder now just works.
 - A multi-root workspace with the repository in any position other than first
-  is now detected.
-- A failure during startup surfaces as a message instead of a silently dead
-  extension.
+  is now detected, and a failure during startup surfaces as a message instead
+  of a silently dead extension.
+- The pre-commit hook was always written to `.git/hooks`, so in a repository
+  that sets `core.hooksPath` — which husky does by default — it installed a
+  hook git would never run. The hooks directory now comes from git config.
+- The hook did nothing at all when neither `blindspot` was on PATH nor
+  `node_modules` held a copy, which is the situation right after installing
+  from a `.vsix`. It now falls back to the extension's bundled CLI, and says so
+  on stderr when it can find nothing — a silent hook reads as "your diff is
+  fine".
+- File text for the report is cached across refreshes and invalidated by mtime
+  and size. A large diff now costs a stat per file every few seconds instead of
+  a full read.
+- Marking a file reviewed no longer records evidence under a path the report
+  cannot look up (an untitled buffer, a diff view, a file from another
+  repository).
+- A mistyped CLI flag, an unknown command, or a non-numeric threshold is an
+  error (exit 2) instead of a silent full run against settings the caller never
+  asked for.
 - `npm test` runs on Windows (the npm script's glob never expanded there), and
   the pre-commit hook's executable-bit assertion is skipped on a platform that
   has no executable bit.
