@@ -20,6 +20,14 @@ const SAVE_DEBOUNCE_MS = 5000;
 /** Above this a file is not read for the report; a diff in it is not reviewable text. */
 const MAX_FILE_BYTES = 2 * 1024 * 1024;
 
+/** A path that stays inside the repository when joined to its root. */
+function isRepoRelative(file: string): boolean {
+  if (!file || path.isAbsolute(file) || /^[a-zA-Z]:/.test(file)) return false;
+  // Report paths use forward slashes, but a backslash is a separator on the
+  // platform this joins on, so both count.
+  return !file.split(/[\\/]/).some((segment) => segment === '..');
+}
+
 let controller: Controller | undefined;
 
 /** Every command the extension contributes, in package.json order. */
@@ -410,6 +418,10 @@ class Controller implements vscode.Disposable {
   }
 
   private async onPanelMessage(m: PanelMessage): Promise<void> {
+    // The webview only ever sends back paths this extension put into its HTML,
+    // but a message handler that joins an arbitrary string onto the repo root
+    // and opens the result is the wrong thing to leave lying around.
+    if ('file' in m && !isRepoRelative(m.file)) return;
     switch (m.type) {
       case 'open': {
         const uri = vscode.Uri.file(path.join(this.git.root, m.file));

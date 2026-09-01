@@ -1,5 +1,22 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- Tests that the report webview escapes what it renders. Much of the panel's
+  content is not ours — file paths come out of `git diff`, and a repository can
+  contain a file named anything a filesystem allows — and the webview runs
+  scripts. Escaping was correct; now a future unescaped interpolation fails
+  loudly instead of being caught by eye.
+
+### Fixed
+
+- Panel messages carrying a path outside the repository are ignored. The
+  webview only ever sends back paths the extension put into its own HTML, but
+  a handler that joins an arbitrary string onto the repo root and opens the
+  result is the wrong thing to leave lying around.
+
 ## [0.3.0] — 2026-09-01
 
 ### Added
