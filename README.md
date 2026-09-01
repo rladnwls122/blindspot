@@ -1,5 +1,7 @@
 # Blindspot
 
+[![CI](https://github.com/rladnwls122/blindspot/actions/workflows/ci.yml/badge.svg)](https://github.com/rladnwls122/blindspot/actions/workflows/ci.yml)
+
 **Blindspot은 코드 리뷰에서 개발자의 실제 주의(attention)를 측정하는 개발자 도구입니다.**
 
 > `git blame`은 그 줄을 *누가 썼는지* 알려줍니다.

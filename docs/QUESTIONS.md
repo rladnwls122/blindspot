@@ -30,7 +30,8 @@ cd blindspot
 지금 모델:
 
 ```
-visible(1) + focused(1) + dwell(1) + caret(1) + edited(2),  reviewed = 3점 이상
+visible(1) + focused(1) + dwell(1) + caret(1) + edited(2) + revisit(1)
+reviewed = 3점 이상
 ```
 
 브리프에 있던 세 부등식이 **정확히** 성립하도록 3으로 잡았다:
@@ -44,6 +45,14 @@ visible(1) + focused(1) + dwell(1) + caret(1) + edited(2),  reviewed = 3점 이�
 **걱정되는 케이스:** `visible + focused` 만으로 2점이라, 여기에 dwell 1초만
 붙으면 커서 안 옮겨도 3점이 된다. 화면에 띄워놓고 1초 멈춘 것만으로 "읽었다"가
 되는 건데 — 너무 후한 것 같기도 하다.
+
+focal weighting이 이 걱정을 일부 덜어준다: visible/focused 시간이 이제 커서
+거리에 따라 감쇠하므로, 뷰포트 가장자리 줄은 같은 1초로 2점을 못 받는다.
+dwell도 초점 근방에만 적립된다. 그래도 커서 바로 옆 줄에 대해서는 걱정이
+그대로 남아 있고, 이건 여전히 실사용으로 판단할 문제다.
+
+revisit(1)이 추가되면서 focused 시간이 있는 줄을 두 번에 걸쳐 본 경우에도
+3점에 도달한다. 이게 후한지 정당한지도 같은 방법으로 판단해야 한다.
 
 - **후하다고 생각되면:** `blindspot.reviewThresholdPoints`를 4로. 그러면 커서를
   옮기거나 직접 편집해야 검토로 인정됨.

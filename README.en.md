@@ -1,5 +1,7 @@
 # Blindspot
 
+[![CI](https://github.com/rladnwls122/blindspot/actions/workflows/ci.yml/badge.svg)](https://github.com/rladnwls122/blindspot/actions/workflows/ci.yml)
+
 **Blindspot is a developer-attention measurement tool for code review.**
 
 > `git blame` tells you who *wrote* a line. Blindspot tells you who *read* it.

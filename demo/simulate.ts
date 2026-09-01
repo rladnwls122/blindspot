@@ -27,7 +27,16 @@ import { SCENARIO, type Action, type ScenarioFile } from './scenario';
 
 const NOW = 1_700_000_000_000;
 
-/** What each reading mode does to the ledger, in the units the tracker uses. */
+/**
+ * What each reading mode does to the ledger, in the units the tracker uses.
+ *
+ * `from`/`to` is the region the reader actually attended to, not a viewport,
+ * so credit is flat here by design — the focal decay the tracker applies is a
+ * guess about where inside a viewport someone was looking, and this scenario
+ * states that directly. The point counts in the comments below assume a line
+ * of average reading cost; a denser line needs proportionally more time to
+ * earn the same visibility point.
+ */
 const MODES: Record<Action['mode'], (l: LineLedger, from: number, to: number) => void> = {
   // The agent wrote it; no human eye time at all.
   generate: (l, from, to) => l.setProvenance(from, to, 'bulk'),
