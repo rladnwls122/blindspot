@@ -16,8 +16,12 @@ import type { DiffReport } from '../core/types';
 import { collectDiff, findGitContext, type GitContext } from '../extension/git';
 import { loadConfig, loadState, installHook } from '../extension/storage';
 
+const COMMANDS = ['check', 'report', 'install-hook', 'help', 'version'];
+
 interface Args {
   command: string;
+  /** A usage mistake, reported instead of guessing what was meant. */
+  error: string | null;
   staged: boolean;
   json: boolean;
   enforce: boolean;
@@ -44,11 +48,36 @@ Options
   --json                  machine-readable output
   --no-color              disable ANSI colour
   --quiet                 only print when there is something to say
+  -v, --version           print the version
   -h, --help              this message
 `;
 
+/** Version from the installed package.json, whichever layout we are running in. */
+function version(): string {
+  for (const candidate of ['../../package.json', '../../../package.json']) {
+    try {
+      const v = JSON.parse(fs.readFileSync(path.join(__dirname, candidate), 'utf8')).version;
+      if (typeof v === 'string') return v;
+    } catch {
+      // Try the next layout.
+    }
+  }
+  return 'unknown';
+}
+
 export async function main(argv: string[]): Promise<number> {
   const args = parseArgs(argv);
+  if (args.error) {
+    // Exit non-zero. A mistyped flag means the caller is not measuring what it
+    // thinks it is, and reporting coverage anyway would be a wrong answer
+    // delivered confidently.
+    process.stderr.write(`blindspot: ${args.error}\n\n${HELP}`);
+    return 2;
+  }
+  if (args.command === 'version') {
+    process.stdout.write(`blindspot ${version()}\n`);
+    return 0;
+  }
   if (args.command === 'help') {
     process.stdout.write(HELP);
     return 0;
@@ -228,6 +257,7 @@ function failureReason(report: DiffReport, cfg: BlindspotConfig, args: Args): st
 function parseArgs(argv: string[]): Args {
   const args: Args = {
     command: 'check',
+    error: null,
     staged: false,
     json: false,
     enforce: false,
@@ -243,6 +273,7 @@ function parseArgs(argv: string[]): Args {
     args.command = rest.shift() as string;
   }
   if (args.command === '-h' || args.command === '--help') args.command = 'help';
+  if (args.command === '-v' || args.command === '--version') args.command = 'version';
 
   for (let i = 0; i < rest.length; i++) {
     const a = rest[i];
@@ -265,32 +296,73 @@ function parseArgs(argv: string[]): Args {
       case '--quiet':
         args.quiet = true;
         break;
-      case '--base':
-        args.baseRef = rest[++i] ?? 'HEAD';
+      case '--base': {
+        const ref = rest[++i];
+        if (!ref || ref.startsWith('-')) args.error ??= '--base needs a ref';
+        else args.baseRef = ref;
         break;
+      }
       case '--min-coverage':
-        args.minCoverage = Number(rest[++i]);
+        args.minCoverage = percentArg(args, a, rest[++i]);
         args.enforce = true;
         break;
       case '--max-critical':
-        args.maxCritical = Number(rest[++i]);
+        args.maxCritical = countArg(args, a, rest[++i]);
         args.enforce = true;
         break;
       case '-h':
       case '--help':
         args.command = 'help';
         break;
+      case '-v':
+      case '--version':
+        args.command = 'version';
+        break;
       default:
-        if (a.startsWith('-')) {
-          process.stderr.write(`blindspot: unknown option ${a}\n`);
-        }
+        args.error ??= a.startsWith('-')
+          ? `unknown option ${a}`
+          : `unexpected argument ${a}`;
     }
   }
 
-  if (!['check', 'report', 'install-hook', 'help'].includes(args.command)) {
-    args.command = 'help';
+  if (!COMMANDS.includes(args.command)) {
+    args.error ??= `unknown command ${args.command}`;
   }
   return args;
+}
+
+/**
+ * A threshold that quietly became NaN would enforce nothing while looking like
+ * it enforced something, which is the one failure mode this tool exists to
+ * prevent in the first place.
+ */
+function numberArg(args: Args, flag: string, raw: string | undefined): number | null {
+  const n = Number(raw);
+  if (raw === undefined || raw.trim() === '' || !Number.isFinite(n)) {
+    args.error ??= `${flag} needs a number`;
+    return null;
+  }
+  return n;
+}
+
+function percentArg(args: Args, flag: string, raw: string | undefined): number | null {
+  const n = numberArg(args, flag, raw);
+  if (n === null) return null;
+  if (n < 0 || n > 100) {
+    args.error ??= `${flag} must be between 0 and 100`;
+    return null;
+  }
+  return n;
+}
+
+function countArg(args: Args, flag: string, raw: string | undefined): number | null {
+  const n = numberArg(args, flag, raw);
+  if (n === null) return null;
+  if (n < 0) {
+    args.error ??= `${flag} cannot be negative`;
+    return null;
+  }
+  return n;
 }
 
 if (require.main === module) {

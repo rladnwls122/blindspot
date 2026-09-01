@@ -273,6 +273,7 @@ blindspot check --staged            # 지금 커밋하려는 것에 대한 카�
 blindspot report                    # 파일별 표
 blindspot check --min-coverage 70   # 70% 미만이면 exit 1 (CI나 엄격한 훅용)
 blindspot check --json              # 기계가 읽는 형식
+blindspot --version                 # 버전
 ```
 
 설치되는 pre-commit 훅은 기본적으로 **경고하고 exit 0** 합니다. 커밋을 막는

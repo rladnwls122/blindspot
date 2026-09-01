@@ -231,6 +231,7 @@ blindspot check --staged            # print the card for what you are about to c
 blindspot report                    # per-file table
 blindspot check --min-coverage 70   # exit 1 below 70% (for CI or a strict hook)
 blindspot check --json              # machine-readable
+blindspot --version                 # the version
 ```
 
 The installed pre-commit hook **warns and exits 0** by default. A review tool

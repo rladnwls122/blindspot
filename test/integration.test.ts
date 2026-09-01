@@ -240,6 +240,24 @@ describe('cli against a real repository', () => {
     assert.match(withBundled, /node "C:\/ext\/bin\/blindspot\.js" check --staged/);
   });
 
+  test('a mistyped flag is an error, not a silent full run', () => {
+    // Reporting coverage for something other than what was asked for is the
+    // exact failure this tool exists to prevent.
+    const bad = blindspot(['check', '--frobnicate']);
+    assert.equal(bad.code, 2);
+    assert.equal(blindspot(['frobnicate']).code, 2);
+    assert.equal(blindspot(['check', '--min-coverage', 'abc']).code, 2);
+    assert.equal(blindspot(['check', '--min-coverage', '150']).code, 2);
+    assert.equal(blindspot(['check', '--base']).code, 2);
+  });
+
+  test('--version and --help are not errors', () => {
+    const v = blindspot(['--version']);
+    assert.equal(v.code, 0);
+    assert.match(v.stdout, /^blindspot \d+\.\d+\.\d+/);
+    assert.equal(blindspot(['--help']).code, 0);
+  });
+
   test('install-hook is idempotent', () => {
     const { stdout } = blindspot(['install-hook']);
     assert.match(stdout, /already installed|hook present/);

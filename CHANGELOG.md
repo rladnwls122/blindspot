@@ -24,7 +24,27 @@
 - `npm run package` / `npm run publish` (`@vscode/vsce`), a generated
   marketplace icon (`npm run icon`), and CI on Linux and Windows.
 
+- `blindspot --version`.
+
 ### Fixed
+
+- The pre-commit hook was always written to `.git/hooks`, so in a repository
+  that sets `core.hooksPath` — which husky does by default — it installed a
+  hook git would never run. The hooks directory now comes from git config.
+- The hook did nothing at all when neither `blindspot` was on PATH nor
+  `node_modules` held a copy, which is the situation right after installing
+  from a `.vsix`. It now falls back to the extension's bundled CLI, and says
+  so on stderr when it can find nothing — a silent hook reads as "your diff
+  is fine".
+- File text for the report is cached across refreshes and invalidated by mtime
+  and size. A large diff now costs a stat per file every few seconds instead
+  of a full read.
+- Marking a file reviewed no longer records evidence under a path the report
+  cannot look up (an untitled buffer, a diff view, a file from another
+  repository).
+- A mistyped CLI flag, an unknown command, or a non-numeric threshold is an
+  error (exit 2) instead of a silent full run against different settings than
+  the caller asked for.
 
 - Commands no longer fail with "command not found" outside a git repository.
   They register regardless, explain what is missing, and retry once a
