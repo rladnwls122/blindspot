@@ -36,8 +36,9 @@
   file moved and refresh the report instead of failing on it again.
 - A command that throws now reports its own error message, not VS Code's
   generic "command failed" naming the id.
-- `npm test` passed a directory to `node --test`, which Node 22 rejects. It
-  now relies on the runner's default pattern, which both Node 20 and 22 honour.
+- `npm test` passed a directory to `node --test`, which Node 22 rejects. A
+  small runner (`scripts/run-tests.mjs`) now hands the runner an explicit file
+  list, which every supported Node version and shell agrees on.
 - A controller that failed partway through startup kept its command ids
   registered, so the fallback handlers could not take them back and VS Code
   rejected the second registration. The controller now owns and releases
