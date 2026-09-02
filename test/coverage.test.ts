@@ -1,8 +1,8 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULT_CONFIG } from '../src/core/config';
-import { buildReport, isIgnored, type ReportSources } from '../src/core/coverage';
-import { emptyEvidence, type FileDiff, type LineEvidence } from '../src/core/types';
+import { buildReport, isIgnored, wholeFileTarget, type ReportSources } from '../src/core/coverage';
+import { emptyActivity, emptyEvidence, type FileDiff, type LineEvidence } from '../src/core/types';
 
 const cfg = DEFAULT_CONFIG;
 
@@ -199,6 +199,58 @@ describe('buildReport', () => {
     const r = buildReport(diffs, { getText: () => undefined, getEvidence: () => undefined }, cfg, 'HEAD');
     assert.equal(r.totalChangedLines, 2);
     assert.equal(r.unseenLines, 2);
+  });
+});
+
+describe('metrics', () => {
+  test('read, focus and activity are reported apart, and the composite is derived', () => {
+    const { diffs, sources } = fixture({
+      'src/app.ts': {
+        lines: ['a', 'b', 'c', 'd'],
+        changed: [1, 2, 3, 4],
+        // Two lines fully read, one half-way there, one never seen.
+        evidence: {
+          1: read(),
+          2: read(),
+          3: { ...emptyEvidence(), visibleMs: 350, focusedMs: 350 },
+        },
+      },
+    });
+    const r = buildReport(diffs, sources, cfg, 'HEAD', 0, {
+      mode: 'reading',
+      activity: { ...emptyActivity(), jumps: 1 },
+    });
+    const m = r.metrics;
+    assert.equal(r.mode, 'reading');
+    // Each of the 4 lines is worth 25 points; 'c' costs 0.25 × 2000 ms = 500 ms
+    // to read and got 350 ms of it.
+    assert.equal(m.read.score, 67.5);
+    assert.equal(m.read.reviewedLines, 2);
+    assert.equal(m.read.targetLines, 4);
+    // Focus keeps growing past the read time; nothing here reached the cap.
+    assert.equal(m.focus.fraction < m.read.fraction, true);
+    assert.equal(m.focus.effectiveMs, 4350);
+    // One jump for four lines is plenty of activity.
+    assert.equal(m.activity.score, 100);
+    assert.deepEqual(m.activity.counts.jumps, 1);
+    const w = cfg.finalWeights;
+    const expected = Math.round((w.read * m.read.fraction + w.focus * m.focus.fraction + w.activity * 1) * 1000) / 10;
+    assert.equal(m.final, expected);
+  });
+
+  test('an empty target reads as complete and unfocused, not as NaN', () => {
+    const r = buildReport([], { getText: () => undefined, getEvidence: () => undefined }, cfg, 'HEAD');
+    assert.equal(r.metrics.read.score, 100);
+    assert.equal(r.metrics.focus.score, 0);
+    assert.equal(r.metrics.activity.score, 0);
+    assert.equal(Number.isFinite(r.metrics.final), true);
+  });
+
+  test('a whole file is a target of every line, without the phantom last one', () => {
+    const t = wholeFileTarget('src/app.ts', ['a', 'b', 'c', '']);
+    assert.deepEqual(t.addedLines, [1, 2, 3]);
+    assert.deepEqual(t.modifiedLines, []);
+    assert.deepEqual(wholeFileTarget('empty.ts', []).addedLines, []);
   });
 });
 

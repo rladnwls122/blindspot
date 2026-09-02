@@ -24,12 +24,22 @@ const cache = new WeakMap<RiskRule[], CompiledRule[]>();
 function compile(rules: RiskRule[]): CompiledRule[] {
   let compiled = cache.get(rules);
   if (!compiled) {
-    compiled = rules.map((r) => ({
-      re: new RegExp(r.pattern, 'i'),
-      level: r.level,
-      reason: r.reason,
-      inert: r.inert === true,
-    }));
+    // Rules come from a hand-edited JSON file. One bad pattern must not take
+    // the whole classifier down: skip it and keep the rest.
+    compiled = [];
+    for (const r of Array.isArray(rules) ? rules : []) {
+      if (!r || typeof r.pattern !== 'string') continue;
+      try {
+        compiled.push({
+          re: new RegExp(r.pattern, 'i'),
+          level: r.level,
+          reason: r.reason,
+          inert: r.inert === true,
+        });
+      } catch {
+        // Invalid regular expression.
+      }
+    }
     cache.set(rules, compiled);
   }
   return compiled;

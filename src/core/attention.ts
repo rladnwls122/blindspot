@@ -69,13 +69,74 @@ export function readCost(text: string, cfg: BlindspotConfig): number {
   const words = trimmed.match(/[A-Za-z0-9_$]+/g)?.length ?? 0;
   const symbols = trimmed.replace(/[A-Za-z0-9_$\s]/g, '').length;
   const tokens = words + symbols * 0.5;
-  const ratio = tokens / Math.max(1, cfg.baselineTokens);
+  const ratio = (tokens / Math.max(1, cfg.baselineTokens)) * shapeDiscount(trimmed);
   return Math.min(cfg.maxReadCost, Math.max(cfg.minReadCost, ratio));
+}
+
+/**
+ * Lines whose shape tells you what they say before you have read them.
+ *
+ * Token count over-charges the boilerplate every reviewer skims on sight: an
+ * import, `const x = 1`, a field in a type, a comment. These are recognised
+ * rather than read, so the read time they need is discounted on top of the
+ * token estimate. The patterns are deliberately conservative — a declaration
+ * whose right-hand side is a call or an expression is real code and pays full
+ * price, because that is where the bug is.
+ * ponytail: regex shape guesses; swap for a tokenizer if a language needs it.
+ */
+const LITERAL =
+  /(?:-?\d[\d_.]*|'[^']*'|"[^"]*"|`[^`]*`|true|false|null|undefined|None|nil|\[\]|\{\}|[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)/
+    .source;
+const SHAPES: Array<[RegExp, number]> = [
+  // imports / requires / package & using lines
+  [/^(?:import\b|export\s+(?:\*|\{[^}]*\})\s+from\b|from\s+\S+\s+import\b|using\b|package\b|#include\b|require\s*\()/, 0.4],
+  // a declaration of a literal, an identifier or a bare `new X()`
+  [
+    new RegExp(
+      String.raw`^(?:export\s+)?(?:const|let|var|val|final|static|private|public|protected|readonly|int|long|float|double|bool|boolean|string|String|auto)\b[\w\s<>\[\],|?:]*=\s*(?:new\s+[\w.]+\(\)|${LITERAL})\s*[;,]?$`,
+    ),
+    0.5,
+  ],
+  // a field or parameter in a type / interface / struct
+  [/^(?:readonly\s+|public\s+|private\s+|protected\s+)?[A-Za-z_$][\w$]*\??\s*:\s*[\w<>\[\]|.'"`\s?()]+[;,]?$/, 0.6],
+  // comments and doc lines
+  [/^(?:\/\/|\/\*|\*|#(?!include|define|if|else|endif))/, 0.6],
+  // single-keyword statements and lone closers
+  [/^(?:return|break|continue|pass|else|try|finally|default:?|end)\s*[;:{}]*$/, 0.3],
+];
+
+/** Factor applied to a line's read cost for its shape, in (0,1]. */
+export function shapeDiscount(trimmed: string): number {
+  for (const [re, factor] of SHAPES) if (re.test(trimmed)) return factor;
+  return 1;
 }
 
 /** Focal context handed to the ledger so crediting stays a pure function. */
 export interface FocalContext {
   /** 1-based line the reader's attention is assumed to sit on. */
   line: number;
+  /** Sum of focal weights over every visible line; the budget's denominator. */
+  norm: number;
   cfg: BlindspotConfig;
+}
+
+/**
+ * The share of one tick's attention a visible line gets, in [0,1].
+ *
+ * The tick is a budget: `attentionLines` lines' worth of time, split across
+ * the viewport by focal weight. With the caret held still, the lines under
+ * it get most of it and the far edge of the screen almost none; with 60
+ * lines on screen nobody read them all in the same second.
+ */
+export function attentionShare(line: number, focus: FocalContext): number {
+  const w = focalWeight(line, focus.line, focus.cfg);
+  if (focus.norm <= 0) return w;
+  return Math.min(1, (w / focus.norm) * focus.cfg.attentionLines);
+}
+
+/** Denominator for `attentionShare`: total weight of what is on screen. */
+export function attentionNorm(ranges: Array<[number, number]>, focusLine: number, cfg: BlindspotConfig): number {
+  let sum = 0;
+  for (const [a, b] of ranges) for (let l = a; l <= b; l++) sum += focalWeight(l, focusLine, cfg);
+  return sum;
 }

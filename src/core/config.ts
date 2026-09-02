@@ -64,6 +64,14 @@ export interface BlindspotConfig {
   peripheralFloor: number;
   /** Minimum focal weight a line needs before a dwell is credited to it. */
   dwellFocalMin: number;
+  /**
+   * How many lines' worth of reading one second of attention buys. A tick's
+   * focused time is a budget shared by every visible line in proportion to
+   * its focal weight, scaled by this — time is conserved, never duplicated
+   * across the viewport. 2 means a line must hold roughly a second of your
+   * pace per line before it is read; 40 lines take at least 40 s.
+   */
+  attentionLines: number;
   /** Scale the time thresholds by how much reading each line actually costs. */
   contentScaling: boolean;
   /** Token count treated as one average line's worth of reading. */
@@ -78,6 +86,18 @@ export interface BlindspotConfig {
   /** Discard visibility credit while scrolling faster than a human reads. */
   readingSpeedGuard: boolean;
   maxLinesPerSecond: number;
+  /**
+   * Focused ms (at average read cost) before a line counts as read. Credit
+   * grows linearly up to this, so a line seen for half of it is half read —
+   * there is no "read on exposure".
+   */
+  readAckMs: number;
+  /** Focused ms at which a line's focus credit stops growing. */
+  focusCapMs: number;
+  /** No caret, scroll or edit for this long and screen time stops counting. */
+  idleAfterMs: number;
+  /** Weights for the optional composite of the three separate metrics. */
+  finalWeights: { read: number; focus: number; activity: number };
   /** Multipliers used when computing weighted coverage. */
   riskWeights: Record<RiskLevel, number>;
   /** Path rules, first match wins. */
@@ -105,18 +125,23 @@ export const DEFAULT_CONFIG: BlindspotConfig = {
   focusedMsForPoint: 800,
   dwellMs: 1000,
   focalModel: true,
-  focalSpanLines: 5,
-  focalDecayLines: 24,
-  peripheralFloor: 0.2,
+  focalSpanLines: 2,
+  focalDecayLines: 10,
+  peripheralFloor: 0.05,
   dwellFocalMin: 0.5,
+  attentionLines: 2,
   contentScaling: true,
   baselineTokens: 8,
-  minReadCost: 0.35,
+  minReadCost: 0.25,
   maxReadCost: 2.5,
   revisitGapMs: 20_000,
   revisitsForPoint: 1,
   readingSpeedGuard: true,
   maxLinesPerSecond: 45,
+  readAckMs: 2000,
+  focusCapMs: 8000,
+  idleAfterMs: 30_000,
+  finalWeights: { read: 0.6, focus: 0.25, activity: 0.15 },
   riskWeights: { critical: 4, high: 3, medium: 2, low: 1 },
   pathRules: [
     { pattern: '(^|/)(auth|authentication|authorization|session|login|signin|oauth|saml|sso)', level: 'critical', reason: 'authentication / session code' },
@@ -170,6 +195,7 @@ export function mergeConfig(
     weights: { ...base.weights, ...(patch.weights ?? {}) },
     riskWeights: { ...base.riskWeights, ...(patch.riskWeights ?? {}) },
     scoreWeights: { ...base.scoreWeights, ...(patch.scoreWeights ?? {}) },
+    finalWeights: { ...base.finalWeights, ...(patch.finalWeights ?? {}) },
     pathRules: patch.pathRules ?? base.pathRules,
     contentRules: patch.contentRules ?? base.contentRules,
     ignore: patch.ignore ?? base.ignore,

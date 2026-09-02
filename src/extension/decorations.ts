@@ -3,10 +3,12 @@ import * as vscode from 'vscode';
 import type { DiffReport } from '../core/types';
 
 /**
- * In-editor markers for changed lines you have not read yet.
+ * In-editor markers for lines you have not read yet.
  *
- * Only unreviewed lines are decorated. Marking the reviewed ones too would
- * turn the whole diff into a wall of colour and teach you to ignore it.
+ * Only the gutter is touched: a solid bar beside the line number, and a mark
+ * in the overview ruler. The code itself keeps its own colours — painting the
+ * whole line was a wall of orange that taught people to ignore it, and made
+ * the text harder to read at exactly the moment they were supposed to read it.
  */
 export class Decorations implements vscode.Disposable {
   private readonly unreviewed: vscode.TextEditorDecorationType;
@@ -15,27 +17,16 @@ export class Decorations implements vscode.Disposable {
 
   constructor() {
     this.unreviewed = vscode.window.createTextEditorDecorationType({
-      isWholeLine: true,
-      backgroundColor: new vscode.ThemeColor('blindspot.unreviewedBackground'),
+      gutterIconPath: gutterBar('#f97316'),
+      gutterIconSize: 'contain',
       overviewRulerColor: new vscode.ThemeColor('blindspot.unreviewedBorder'),
       overviewRulerLane: vscode.OverviewRulerLane.Right,
-      borderWidth: '0 0 0 2px',
-      borderStyle: 'solid',
-      borderColor: new vscode.ThemeColor('blindspot.unreviewedBorder'),
     });
     this.severe = vscode.window.createTextEditorDecorationType({
-      isWholeLine: true,
-      backgroundColor: new vscode.ThemeColor('blindspot.unreviewedBackground'),
+      gutterIconPath: gutterBar('#ef4444'),
+      gutterIconSize: 'contain',
       overviewRulerColor: new vscode.ThemeColor('errorForeground'),
       overviewRulerLane: vscode.OverviewRulerLane.Right,
-      borderWidth: '0 0 0 3px',
-      borderStyle: 'solid',
-      borderColor: new vscode.ThemeColor('errorForeground'),
-      after: {
-        contentText: '  unreviewed',
-        color: new vscode.ThemeColor('descriptionForeground'),
-        fontStyle: 'italic',
-      },
     });
   }
 
@@ -67,16 +58,17 @@ export class Decorations implements vscode.Disposable {
     for (const h of hunks) {
       const start = Math.min(Math.max(0, h.startLine - 1), editor.document.lineCount - 1);
       const end = Math.min(Math.max(0, h.endLine - 1), editor.document.lineCount - 1);
-      const option: vscode.DecorationOptions = {
-        range: new vscode.Range(start, 0, end, Number.MAX_SAFE_INTEGER),
-        hoverMessage: new vscode.MarkdownString(
-          `**Blindspot** — ${h.lineCount} unread ${h.lineCount === 1 ? 'line' : 'lines'}` +
-            `\n\n${h.risk === 'critical' || h.risk === 'high' ? '⚠️ ' : ''}${h.reason}` +
-            (h.aiRatio > 0 ? `\n\n${Math.round(h.aiRatio * 100)}% machine-written` : ''),
-        ),
-      };
-      if (h.risk === 'critical' || h.risk === 'high') risky.push(option);
-      else plain.push(option);
+      const hoverMessage = new vscode.MarkdownString(
+        `**Blindspot** — ${h.lineCount} unread ${h.lineCount === 1 ? 'line' : 'lines'}` +
+          `\n\n${h.risk === 'critical' || h.risk === 'high' ? '⚠️ ' : ''}${h.reason}` +
+          (h.aiRatio > 0 ? `\n\n${Math.round(h.aiRatio * 100)}% machine-written` : ''),
+      );
+      // A gutter icon is per line, not per range: one option per line, or
+      // only the first line of a hunk would get the bar.
+      const bucket = h.risk === 'critical' || h.risk === 'high' ? risky : plain;
+      for (let line = start; line <= end; line++) {
+        bucket.push({ range: new vscode.Range(line, 0, line, 0), hoverMessage });
+      }
     }
 
     editor.setDecorations(this.unreviewed, plain);
@@ -95,4 +87,12 @@ export class Decorations implements vscode.Disposable {
     this.unreviewed.dispose();
     this.severe.dispose();
   }
+}
+
+/** A tall, narrow bar that sits against the line number. */
+function gutterBar(color: string): vscode.Uri {
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">` +
+    `<rect x="10" y="0" width="5" height="16" rx="1" fill="${color}"/></svg>`;
+  return vscode.Uri.parse(`data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`);
 }

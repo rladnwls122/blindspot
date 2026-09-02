@@ -1,11 +1,12 @@
 import * as vscode from 'vscode';
 import { bar, pct } from '../core/score';
-import type { DiffReport, FileReport, RiskLevel } from '../core/types';
+import type { DiffReport, FileReport, RiskLevel, TargetMode } from '../core/types';
 
 export type PanelMessage =
   | { type: 'open'; file: string; line: number }
   | { type: 'reviewNext' }
   | { type: 'refresh' }
+  | { type: 'completeReview' }
   | { type: 'markReviewed'; file: string };
 
 /**
@@ -102,6 +103,8 @@ document.addEventListener('click', (e) => {
     vscode.postMessage({ type: 'refresh' });
   } else if (action === 'markReviewed') {
     vscode.postMessage({ type: 'markReviewed', file: el.dataset.file });
+  } else if (action === 'completeReview') {
+    vscode.postMessage({ type: 'completeReview' });
   }
 });
 </script>
@@ -110,13 +113,27 @@ document.addEventListener('click', (e) => {
   }
 }
 
+const MODE_LABEL: Record<TargetMode, string> = {
+  diff: 'diff',
+  unreviewed: 'unreviewed changes',
+  reading: 'reading',
+};
+
+function renderHeader(r: DiffReport): string {
+  return `<header>
+    <h1>BLINDSPOT <span class="mode">${MODE_LABEL[r.mode]}</span></h1>
+    <button class="ghost" data-action="refresh">refresh</button>
+  </header>`;
+}
+
 function renderEmpty(r: DiffReport): string {
+  const what =
+    r.mode === 'reading'
+      ? `<p>No files opened here yet.</p><p class="muted">Blindspot measures every file you open in this folder.</p>`
+      : `<p>No changes against <code>${escapeHtml(r.baseRef)}</code>.</p><p class="muted">Blindspot starts measuring as soon as you change something.</p>`;
   return `<div class="wrap">
-  <header><h1>BLINDSPOT</h1><button class="ghost" data-action="refresh">refresh</button></header>
-  <div class="empty">
-    <p>No changes against <code>${escapeHtml(r.baseRef)}</code>.</p>
-    <p class="muted">Blindspot starts measuring as soon as you change something.</p>
-  </div>
+  ${renderHeader(r)}
+  <div class="empty">${what}</div>
 </div>`;
 }
 
@@ -126,29 +143,52 @@ function renderReport(r: DiffReport): string {
   const tone = blind >= 35 ? 'bad' : blind >= 15 ? 'warn' : 'good';
 
   return `<div class="wrap">
-  <header>
-    <h1>BLINDSPOT</h1>
-    <button class="ghost" data-action="refresh">refresh</button>
-  </header>
+  ${renderHeader(r)}
 
   <section class="card ${tone}">
     <div class="row"><span>Review coverage</span><b>${coverage}%</b></div>
     <div class="row"><span>Blindspot</span><b class="accent">${blind}% ${blind >= 25 ? '⚠️' : ''}</b></div>
     <div class="meter"><i style="width:${coverage}%"></i></div>
     <div class="counts">
-      <div><b>${r.totalChangedLines}</b><span>changed lines</span></div>
+      <div><b>${r.totalChangedLines}</b><span>${r.mode === 'reading' ? 'lines' : 'changed lines'}</span></div>
       <div><b>${r.reviewedLines}</b><span>reviewed</span></div>
       <div><b class="accent">${r.unseenLines}</b><span>unseen</span></div>
     </div>
     <button class="primary" data-action="reviewNext" ${r.unseenLines === 0 ? 'disabled' : ''}>
       ${r.unseenLines === 0 ? 'Nothing left to review' : 'Review Blindspot'}
     </button>
+    ${
+      r.mode === 'unreviewed'
+        ? `<button class="ghost wide" data-action="completeReview">Complete review — baseline to HEAD</button>`
+        : ''
+    }
   </section>
 
+  ${renderMetricsCard(r)}
   ${renderScoreCard(r)}
   ${renderRiskCard(r)}
   ${renderFileList(r)}
 </div>`;
+}
+
+/**
+ * The three measurements, side by side and never summed into one another.
+ * The composite sits below them, labelled as the derived thing it is.
+ */
+function renderMetricsCard(r: DiffReport): string {
+  const m = r.metrics;
+  const secs = Math.round(m.focus.effectiveMs / 1000);
+  const a = m.activity.counts;
+  const events = a.jumps + a.navigations + a.edits + a.marks + a.completions;
+  return `<section class="card">
+  <h2>Reading</h2>
+  <div class="triple">
+    <div><span>Read</span><b class="${toneClass(m.read.fraction)}">${m.read.score}</b><small>${m.read.reviewedLines}/${m.read.targetLines} lines</small></div>
+    <div><span>Focus</span><b class="${toneClass(m.focus.fraction)}">${m.focus.score}</b><small>${secs}s effective</small></div>
+    <div><span>Activity</span><b class="${toneClass(m.activity.fraction)}">${m.activity.score}</b><small>${events} actions</small></div>
+  </div>
+  <p class="note">Final ${m.final} — weighted; the three above are what was measured.</p>
+</section>`;
 }
 
 function renderScoreCard(r: DiffReport): string {
@@ -251,6 +291,13 @@ body {
 .wrap { max-width: 720px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
 header { display: flex; align-items: center; justify-content: space-between; }
 h1 { font-size: 12px; letter-spacing: .22em; margin: 0; opacity: .75; font-weight: 600; }
+h1 .mode { letter-spacing: 0; font-weight: 400; opacity: .7; margin-left: 8px; text-transform: none; }
+.triple { display: flex; gap: 18px; }
+.triple div { flex: 1; display: flex; flex-direction: column; }
+.triple span { font-size: 11px; opacity: .6; }
+.triple b { font-size: 22px; font-variant-numeric: tabular-nums; }
+.triple small { font-size: 11px; opacity: .55; }
+button.wide { width: 100%; margin-top: 8px; }
 h2 { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; opacity: .6; margin: 0 0 10px; font-weight: 600; }
 .card {
   border: 1px solid var(--vscode-panel-border, rgba(128,128,128,.35));

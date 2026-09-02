@@ -41,6 +41,7 @@ export function evaluate(
     (revisit ? w.revisit : 0);
 
   const max = maxPoints(w);
+  const read = readFraction(ev, cfg, lineText);
   return {
     visible,
     focused,
@@ -50,8 +51,34 @@ export function evaluate(
     revisit,
     points,
     confidence: max > 0 ? Math.min(1, points / max) : 0,
-    reviewed: points >= cfg.reviewThresholdPoints,
+    readFraction: read,
+    focusFraction: focusFraction(ev, cfg, lineText),
+    // The signals say *how* a line was read; the time says *whether* it was.
+    // Writing a line by hand is the one signal that vouches on its own.
+    reviewed: points >= cfg.reviewThresholdPoints && (edited || read >= 1),
   };
+}
+
+/**
+ * How much of a line has been read, in [0,1]: focused time against the
+ * acknowledgement time for a line of its cost. Grows linearly, so half the
+ * time is half a read — never a full read for a glance.
+ */
+export function readFraction(ev: LineEvidence, cfg: BlindspotConfig, lineText?: string): number {
+  const cost = lineText === undefined ? 1 : readCost(lineText, cfg);
+  const need = Math.max(1, cfg.readAckMs * cost);
+  return Math.min(1, ev.focusedMs / need);
+}
+
+/**
+ * How focused the reading of a line was, in [0,1]: the same time, measured
+ * against a higher ceiling. Beyond `focusCapMs` more time is idling, not
+ * focus, and earns nothing.
+ */
+export function focusFraction(ev: LineEvidence, cfg: BlindspotConfig, lineText?: string): number {
+  const cost = lineText === undefined ? 1 : readCost(lineText, cfg);
+  const cap = Math.max(1, cfg.focusCapMs * cost);
+  return Math.min(1, ev.focusedMs / cap);
 }
 
 /** Human-readable explanation of a verdict, for tooltips and the CLI. */
@@ -64,6 +91,11 @@ export function explain(ev: LineEvidence, cfg: BlindspotConfig, lineText?: strin
   parts.push(`${s.caret ? '✓' : '·'} navigated (${ev.caretHits}×)`);
   parts.push(`${s.edited ? '✓' : '·'} edited (${ev.humanEdits}×)`);
   parts.push(`${s.revisit ? '✓' : '·'} re-read (${ev.revisits ?? 0}× returned)`);
+  const cost = lineText === undefined ? 1 : readCost(lineText, cfg);
+  parts.push(
+    `${s.readFraction >= 1 ? '✓' : '·'} read time ${(ev.focusedMs / 1000).toFixed(1)}s of ` +
+      `${((cfg.readAckMs * cost) / 1000).toFixed(1)}s (${Math.round(s.readFraction * 100)}%)`,
+  );
   const verdict = s.reviewed ? 'reviewed' : 'blindspot';
   return `${verdict} — ${s.points}/${cfg.reviewThresholdPoints} pts\n${parts.join('\n')}`;
 }

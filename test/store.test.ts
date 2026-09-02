@@ -22,6 +22,29 @@ describe('parseState', () => {
     assert.equal(parsed.trackedMs, 5000);
   });
 
+  test('activity and the review baseline survive a round trip', () => {
+    const state = emptyState();
+    state.activity.jumps = 3;
+    state.activity.completions = 1;
+    state.baseline = { commit: 'abcdef1234567890abcdef1234567890abcdef12', setAt: 42 };
+    const parsed = parseState(serializeState(state));
+    assert.deepEqual(parsed.activity, state.activity);
+    assert.deepEqual(parsed.baseline, state.baseline);
+  });
+
+  test('a state written before activity existed loads with zero counts and no baseline', () => {
+    const parsed = parseState(JSON.stringify({ version: STATE_VERSION, files: {}, trackedMs: 1 }));
+    assert.deepEqual(parsed.activity, emptyState().activity);
+    assert.equal(parsed.baseline, null);
+  });
+
+  test('a baseline that is not a commit hash is dropped', () => {
+    const parsed = parseState(
+      JSON.stringify({ version: STATE_VERSION, files: {}, baseline: { commit: '../etc', setAt: 1 } }),
+    );
+    assert.equal(parsed.baseline, null);
+  });
+
   test('a truncated file degrades to no evidence rather than throwing', () => {
     const parsed = parseState('{"version":1,"files":{"a.ts":[{"h":"x","e":{"visib');
     assert.deepEqual(parsed.files, {});

@@ -15,6 +15,7 @@ import type { BlindspotConfig } from '../core/config';
 import type { DiffReport } from '../core/types';
 import { collectDiff, findGitContext, type GitContext } from '../extension/git';
 import { loadConfig, loadState, installHook } from '../extension/storage';
+import { workspaceFromGit } from '../extension/workspace';
 
 const COMMANDS = ['check', 'report', 'install-hook', 'help', 'version'];
 
@@ -96,7 +97,15 @@ export async function main(argv: string[]): Promise<number> {
   }
 
   const cfg = await loadConfig(ctx);
-  const report = await produceReport(ctx, cfg, args);
+  let report: DiffReport;
+  try {
+    report = await produceReport(ctx, cfg, args);
+  } catch (err) {
+    // Same shape as "not a git repository": nothing was measured, so an
+    // enforcing hook fails and a plain check just says so.
+    process.stderr.write(`blindspot: ${err instanceof Error ? err.message : String(err)}\n`);
+    return args.enforce ? 1 : 0;
+  }
 
   if (args.json) {
     process.stdout.write(JSON.stringify(report, null, 2) + '\n');
@@ -144,7 +153,7 @@ async function produceReport(
   args: Args,
 ): Promise<DiffReport> {
   const diffs = await collectDiff(ctx, { baseRef: args.baseRef, staged: args.staged });
-  const state = await loadState(ctx);
+  const state = await loadState(workspaceFromGit(ctx));
 
   // Rebuild each file's ledger by anchoring stored hashes to the text the
   // commit will actually contain.

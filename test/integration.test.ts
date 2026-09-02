@@ -251,6 +251,29 @@ describe('cli against a real repository', () => {
     assert.equal(blindspot(['check', '--base']).code, 2);
   });
 
+  test('an unknown base ref is an error, not an empty diff', () => {
+    // `git diff nosuchref` fails; treating that as "nothing changed" would let
+    // a typo'd --base pass an enforcing hook with 100% coverage.
+    write('src/app.ts', ['export const version = "3.0.0";', 'export const name = "demo";']);
+    const warn = blindspot(['check', '--base', 'nosuchref']);
+    assert.equal(warn.code, 0);
+    assert.doesNotMatch(warn.stdout, /changed lines/);
+    assert.equal(blindspot(['check', '--base', 'nosuchref', '--min-coverage', '1']).code, 1);
+    git(['checkout', '--', 'src/app.ts']);
+  });
+
+  test('a broken risk rule in the repo config is skipped, not fatal', () => {
+    write('.blindspot/config.json', [
+      '{"pathRules":[{"pattern":"(unclosed","level":"critical","reason":"x"},"junk"]}',
+    ]);
+    write('src/app.ts', ['export const version = "3.0.0";', 'export const name = "demo";']);
+    const { stdout, code } = blindspot(['check']);
+    assert.equal(code, 0);
+    assert.match(stdout, /changed lines/);
+    fs.rmSync(path.join(repo, '.blindspot'), { recursive: true, force: true });
+    git(['checkout', '--', 'src/app.ts']);
+  });
+
   test('--version and --help are not errors', () => {
     const v = blindspot(['--version']);
     assert.equal(v.code, 0);

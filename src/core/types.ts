@@ -72,7 +72,53 @@ export interface EvidenceSignals {
   points: number;
   /** points / maxPoints, in [0,1]. */
   confidence: number;
+  /** Focused time against the read acknowledgement time, in [0,1]. */
+  readFraction: number;
+  /** Focused time against the focus ceiling, in [0,1]. */
+  focusFraction: number;
   reviewed: boolean;
+}
+
+/**
+ * What the report measures against.
+ *
+ * - `diff`       working tree against `baseRef` (a PR-style review)
+ * - `unreviewed` everything since the last completed review, commits included
+ * - `reading`    every line of every file you have opened here; no git needed
+ */
+export type TargetMode = 'diff' | 'unreviewed' | 'reading';
+
+/** Review actions, counted per workspace. Raw counts, never merged into time. */
+export interface ActivityCounts {
+  /** Jumps to a blindspot, from the navigator or the report. */
+  jumps: number;
+  /** Caret / selection moves inside tracked files. */
+  navigations: number;
+  /** Human edit batches. */
+  edits: number;
+  /** "Mark as reviewed" overrides. */
+  marks: number;
+  /** Reviews completed (baseline advanced). */
+  completions: number;
+}
+
+export function emptyActivity(): ActivityCounts {
+  return { jumps: 0, navigations: 0, edits: 0, marks: 0, completions: 0 };
+}
+
+/**
+ * The three measurements, kept apart. Each is in [0,1]; `*Score` is the same
+ * thing on 0–100. `final` is the optional weighted composite and is derived —
+ * nothing here is ever stored merged.
+ */
+export interface ReadingMetrics {
+  /** Mean per-line read fraction: each of N lines is worth 100/N points. */
+  read: { fraction: number; score: number; reviewedLines: number; targetLines: number };
+  /** Mean per-line focus fraction, and the effective (capped) focused ms. */
+  focus: { fraction: number; score: number; effectiveMs: number };
+  /** Activity events per target line, saturating. */
+  activity: { fraction: number; score: number; counts: ActivityCounts };
+  final: number;
 }
 
 /** One changed line, joined with what we know about it. */
@@ -137,7 +183,9 @@ export interface ScoreBreakdown {
 
 export interface DiffReport {
   baseRef: string;
+  mode: TargetMode;
   generatedAt: number;
+  metrics: ReadingMetrics;
   totalChangedLines: number;
   reviewedLines: number;
   unseenLines: number;

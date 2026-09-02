@@ -2,7 +2,8 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import Module from 'node:module';
 import { DEFAULT_CONFIG } from '../src/core/config';
-import { emptyEvidence, type DiffReport, type LineEvidence } from '../src/core/types';
+import { emptyActivity, emptyEvidence, type DiffReport, type LineEvidence } from '../src/core/types';
+import { computeMetrics } from '../src/core/coverage';
 
 /**
  * The hover is the only place a disagreement with the tool can be settled:
@@ -44,6 +45,8 @@ function report(): DiffReport {
   return {
     baseRef: 'HEAD',
     generatedAt: 0,
+    mode: 'diff',
+    metrics: computeMetrics({ readSum: 0, focusSum: 0, effectiveMs: 0, reviewedLines: 0, targetLines: 0 }, emptyActivity(), DEFAULT_CONFIG),
     totalChangedLines: 10,
     reviewedLines: 6,
     unseenLines: 4,

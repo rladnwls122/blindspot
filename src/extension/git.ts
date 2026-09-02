@@ -77,8 +77,11 @@ export async function collectDiff(ctx: GitContext, opts: DiffOptions = {}): Prom
   let diffs: FileDiff[] = [];
   try {
     diffs = parseUnifiedDiff(await git(ctx.root, args));
-  } catch {
+  } catch (err) {
     // An empty repository has no HEAD to diff against; everything is untracked.
+    // Anything else (a typo'd base ref, say) must not become "nothing changed"
+    // — that is a 100% coverage verdict for a diff nobody measured.
+    if (await hasHead(ctx)) throw new Error(`git diff against ${baseRef} failed: ${gitError(err)}`);
     diffs = [];
   }
 
@@ -103,17 +106,29 @@ async function untrackedAsDiffs(ctx: GitContext): Promise<FileDiff[]> {
   return wholeFileDiffs(ctx, list);
 }
 
+async function hasHead(ctx: GitContext): Promise<boolean> {
+  try {
+    await git(ctx.root, ['rev-parse', '--verify', '-q', 'HEAD']);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** First stderr line of a failed git call, or the error message. */
+function gitError(err: unknown): string {
+  const stderr = (err as { stderr?: string })?.stderr;
+  const line = typeof stderr === 'string' ? stderr.split('\n')[0].trim() : '';
+  return line || (err instanceof Error ? err.message : String(err));
+}
+
 /** `git diff --cached HEAD` already covers added files, but not in a fresh repo. */
 async function stagedNewFilesAsDiffs(ctx: GitContext): Promise<FileDiff[]> {
-  try {
-    await git(ctx.root, ['rev-parse', '--verify', 'HEAD']);
-    return [];
-  } catch {
-    const list = (await git(ctx.root, ['diff', '--cached', '--name-only', '-z', '--diff-filter=A']))
-      .split('\0')
-      .filter(Boolean);
-    return wholeFileDiffs(ctx, list);
-  }
+  if (await hasHead(ctx)) return [];
+  const list = (await git(ctx.root, ['diff', '--cached', '--name-only', '-z', '--diff-filter=A']))
+    .split('\0')
+    .filter(Boolean);
+  return wholeFileDiffs(ctx, list);
 }
 
 async function wholeFileDiffs(ctx: GitContext, files: string[]): Promise<FileDiff[]> {
@@ -150,6 +165,26 @@ export async function headCommitDeclaresAi(ctx: GitContext): Promise<boolean> {
   try {
     const body = await git(ctx.root, ['log', '-1', '--pretty=%B']);
     return AI_TRAILERS.test(body);
+  } catch {
+    return false;
+  }
+}
+
+/** Full hash of HEAD, or null in a repository with no commits yet. */
+export async function headCommit(ctx: GitContext): Promise<string | null> {
+  try {
+    const sha = (await git(ctx.root, ['rev-parse', '--verify', 'HEAD^{commit}'])).trim();
+    return /^[0-9a-f]{7,64}$/i.test(sha) ? sha : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Whether a commit still exists here — it may have been rebased away. */
+export async function commitExists(ctx: GitContext, commit: string): Promise<boolean> {
+  try {
+    await git(ctx.root, ['cat-file', '-e', `${commit}^{commit}`]);
+    return true;
   } catch {
     return false;
   }

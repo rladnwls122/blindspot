@@ -27,7 +27,11 @@ export class StatusBar implements vscode.Disposable {
     this.item.text = blind === 0 ? `$(eye) 0%` : `$(eye-closed) ${blind}%`;
     this.item.tooltip = new vscode.MarkdownString(
       [
-        `**Blindspot ${blind}%** — ${report.unseenLines} of ${report.totalChangedLines} changed lines unread`,
+        `**Blindspot ${blind}%** — ${report.unseenLines} of ${report.totalChangedLines} ${
+          report.mode === 'reading' ? 'lines in opened files' : 'changed lines'
+        } unread`,
+        '',
+        `Read **${report.metrics.read.score}** · Focus **${report.metrics.focus.score}** · Activity **${report.metrics.activity.score}**`,
         '',
         `Review Score **${report.score.score}**`,
         '',

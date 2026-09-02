@@ -2,14 +2,17 @@ import type { BlindspotConfig } from './config';
 import { evaluate, isMachineAuthored } from './evidence';
 import { classifyLine, maxRisk, riskRank, isSevere } from './risk';
 import { computeScore, type ScoreBuckets } from './score';
-import { emptyEvidence } from './types';
+import { emptyActivity, emptyEvidence } from './types';
 import type {
+  ActivityCounts,
   BlindspotHunk,
   DiffReport,
   FileDiff,
   FileReport,
   LineEvidence,
+  ReadingMetrics,
   RiskLevel,
+  TargetMode,
 } from './types';
 
 /**
@@ -27,12 +30,36 @@ export interface ReportSources {
 /** Merge unreviewed lines into hunks, tolerating small reviewed gaps. */
 const HUNK_GAP_TOLERANCE = 2;
 
+/**
+ * A whole file as a code target: every line, none of them "modified". This is
+ * what general reading measures against, and it is the only thing that
+ * differs between reading a codebase and reviewing a diff.
+ */
+export function wholeFileTarget(file: string, textLines: string[]): FileDiff {
+  let count = textLines.length;
+  // A trailing newline produces a final empty element that is not a line.
+  if (count > 0 && textLines[count - 1] === '') count -= 1;
+  return {
+    file,
+    addedLines: Array.from({ length: count }, (_, i) => i + 1),
+    modifiedLines: [],
+    deletedLines: 0,
+    binary: false,
+  };
+}
+
+export interface ReportOptions {
+  mode?: TargetMode;
+  activity?: ActivityCounts;
+}
+
 export function buildReport(
   diffs: FileDiff[],
   sources: ReportSources,
   cfg: BlindspotConfig,
   baseRef: string,
   now = Date.now(),
+  opts: ReportOptions = {},
 ): DiffReport {
   const buckets: ScoreBuckets = {
     coverage: [0, 0],
@@ -43,6 +70,9 @@ export function buildReport(
 
   const files: FileReport[] = [];
   const allHunks: BlindspotHunk[] = [];
+  let readSum = 0;
+  let focusSum = 0;
+  let effectiveMs = 0;
 
   for (const diff of diffs) {
     if (diff.binary) continue;
@@ -70,6 +100,9 @@ export function buildReport(
 
       risks.push(verdict.level);
       weightedTotal += weight;
+      readSum += signals.readFraction;
+      focusSum += signals.focusFraction;
+      effectiveMs += Math.min(ev.focusedMs, cfg.focusCapMs);
       buckets.coverage[1] += 1;
       if (isSevere(verdict.level)) buckets.critical[1] += 1;
       if (!modified.has(line)) buckets.newCode[1] += 1;
@@ -121,7 +154,13 @@ export function buildReport(
 
   return {
     baseRef,
+    mode: opts.mode ?? 'diff',
     generatedAt: now,
+    metrics: computeMetrics(
+      { readSum, focusSum, effectiveMs, reviewedLines, targetLines: totalChangedLines },
+      opts.activity ?? emptyActivity(),
+      cfg,
+    ),
     totalChangedLines,
     reviewedLines,
     unseenLines: totalChangedLines - reviewedLines,
@@ -131,6 +170,44 @@ export function buildReport(
     files,
     hunks: allHunks,
     worstFile: files.find((f) => f.unseenLines > 0) ?? null,
+  };
+}
+
+/**
+ * The three metrics, from per-line sums.
+ *
+ * Read and Focus are means over target lines, which is the same thing as
+ * giving each of N lines a cap of 100/N points and adding up what it earned.
+ * Activity is events per target line: one review action per twenty lines is
+ * treated as fully active.
+ * ponytail: linear saturation; replace with a fitted curve once there is data.
+ */
+export function computeMetrics(
+  sums: {
+    readSum: number;
+    focusSum: number;
+    effectiveMs: number;
+    reviewedLines: number;
+    targetLines: number;
+  },
+  counts: ActivityCounts,
+  cfg: BlindspotConfig,
+): ReadingMetrics {
+  const n = sums.targetLines;
+  const read = n > 0 ? sums.readSum / n : 1;
+  const focus = n > 0 ? sums.focusSum / n : 0;
+  const events =
+    counts.jumps + counts.navigations + counts.edits + counts.marks * 5 + counts.completions * 10;
+  const activity = n > 0 ? Math.min(1, events / Math.max(1, n * 0.05)) : 0;
+  const w = cfg.finalWeights;
+  const wsum = w.read + w.focus + w.activity;
+  const final = wsum > 0 ? (w.read * read + w.focus * focus + w.activity * activity) / wsum : 0;
+  const score = (f: number) => Math.round(f * 1000) / 10;
+  return {
+    read: { fraction: read, score: score(read), reviewedLines: sums.reviewedLines, targetLines: n },
+    focus: { fraction: focus, score: score(focus), effectiveMs: Math.round(sums.effectiveMs) },
+    activity: { fraction: activity, score: score(activity), counts },
+    final: score(final),
   };
 }
 

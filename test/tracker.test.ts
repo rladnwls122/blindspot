@@ -80,7 +80,7 @@ function makeEditor(lineCount: number, first: number, last: number, caret: numbe
 let tracker: any;
 
 function startTracker(cfg = DEFAULT_CONFIG): void {
-  tracker = new AttentionTracker({ root: ROOT, gitDir: ROOT, hooksDir: ROOT }, cfg, {}, () => {});
+  tracker = new AttentionTracker({ root: ROOT }, cfg, {}, () => {});
   tracker.start(emptyState());
 }
 
@@ -115,12 +115,12 @@ describe('AttentionTracker', { concurrency: 1 }, () => {
   });
 
   test('a tall viewport does not report its far edge as read', () => {
-    // 60 lines on screen, caret at the top, held still for four seconds.
+    // 60 lines on screen, caret at the top, held still for twelve seconds.
     const editor = makeEditor(60, 0, 59, 0);
     world.visibleEditors = [editor];
     world.activeEditor = editor;
     startTracker();
-    hold(4000);
+    hold(12000);
 
     assert.equal(evaluate(seen(1), DEFAULT_CONFIG).reviewed, true, 'the caret line was read');
     assert.equal(evaluate(seen(60), DEFAULT_CONFIG).reviewed, false, 'the far edge was not');
@@ -206,5 +206,59 @@ describe('AttentionTracker', { concurrency: 1 }, () => {
     hold(1000);
 
     assert.equal(seen(11).revisits, 1);
+  });
+
+  test('reading at a human pace is read; racing through the same lines is not', () => {
+    // 40-line viewport, caret stepping down one line at a time.
+    const pace = (msPerLine: number) => {
+      const editor = makeEditor(200, 0, 39, 0);
+      world.visibleEditors = [editor];
+      world.activeEditor = editor;
+      startTracker();
+      for (let line = 0; line < 80; line++) {
+        const top = Math.max(0, line - 20);
+        editor.visibleRanges = [{ start: { line: top }, end: { line: top + 39 } }];
+        editor.selection = { active: { line } };
+        hold(msPerLine);
+      }
+      let read = 0;
+      for (let l = 20; l <= 60; l++) if (evaluate(seen(l), DEFAULT_CONFIG).reviewed) read += 1;
+      tracker.dispose();
+      return read;
+    };
+    assert.equal(pace(2000), 41, 'two seconds a line reads everything');
+    assert.equal(pace(250) < 5, true, 'a quarter second a line reads almost nothing');
+  });
+
+  test('a file left open with nobody at the keyboard stops earning', () => {
+    const editor = makeEditor(20, 0, 19, 5);
+    world.visibleEditors = [editor];
+    world.activeEditor = editor;
+    startTracker({ ...DEFAULT_CONFIG, idleAfterMs: 5000 });
+    hold(5000);
+    const atIdle = seen(6).focusedMs;
+    assert.equal(atIdle > 0, true);
+
+    // Ten more minutes of the same screen, no caret, scroll or edit.
+    hold(10 * 60 * 1000);
+    assert.equal(seen(6).focusedMs, atIdle, 'walking away is not reading');
+
+    // Moving the viewport is a sign of life; the clock starts again.
+    editor.visibleRanges = [{ start: { line: 1 }, end: { line: 20 } }];
+    hold(1000);
+    assert.equal(seen(6).focusedMs > atIdle, true);
+  });
+
+  test('review actions are counted, and completing a review sets the baseline', () => {
+    startTracker();
+    tracker.recordActivity('jumps');
+    tracker.recordActivity('jumps');
+    tracker.setBaseline('0123456789abcdef0123456789abcdef01234567');
+    assert.equal(tracker.activityCounts.jumps, 2);
+    assert.equal(tracker.activityCounts.completions, 1);
+    assert.equal(tracker.reviewBaseline?.commit, '0123456789abcdef0123456789abcdef01234567');
+    const snap = tracker.snapshot(() => undefined);
+    assert.equal(snap.activity.jumps, 2);
+    assert.equal(snap.baseline?.commit.length, 40);
   });
 });

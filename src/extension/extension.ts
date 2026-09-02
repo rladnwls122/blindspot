@@ -2,19 +2,20 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { DEFAULT_CONFIG, type BlindspotConfig } from '../core/config';
-import { buildReport, type ReportSources } from '../core/coverage';
+import { buildReport, wholeFileTarget, type ReportSources } from '../core/coverage';
 import { pct } from '../core/score';
-import type { DiffReport } from '../core/types';
+import type { DiffReport, FileDiff, TargetMode } from '../core/types';
 import type { AiRegions } from '../core/store';
 import { CommitWatcher } from './commitwatch';
 import { Decorations } from './decorations';
 import { EvidenceHover } from './hover';
-import { collectDiff, findGitContext, type GitContext } from './git';
+import { collectDiff, commitExists, findGitContext, headCommit } from './git';
 import { Navigator } from './navigator';
 import { ReportPanel, type PanelMessage } from './panel';
 import { StatusBar } from './statusbar';
 import { installHook, loadAiRegions, loadConfig, loadState, saveState } from './storage';
 import { AttentionTracker, docLines } from './tracker';
+import { findWorkspace, workspaceFromGit, type WorkspaceContext } from './workspace';
 
 const SAVE_DEBOUNCE_MS = 5000;
 /** Above this a file is not read for the report; a diff in it is not reviewable text. */
@@ -38,6 +39,8 @@ const COMMAND_IDS = [
   'blindspot.markFileReviewed',
   'blindspot.resetSession',
   'blindspot.installGitHook',
+  'blindspot.completeReview',
+  'blindspot.selectTarget',
 ] as const;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
@@ -56,7 +59,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 /** Bring the controller up, or explain why it could not come up. */
 async function tryStart(context: vscode.ExtensionContext): Promise<boolean> {
   if (controller) return true;
-  const ctx = await findRepo();
+  const ctx = await findWorkspaceFolder();
   if (!ctx) return false;
   const started = new Controller(context, ctx);
   try {
@@ -79,16 +82,18 @@ async function tryStart(context: vscode.ExtensionContext): Promise<boolean> {
 }
 
 /**
- * First workspace folder that is inside a git repository. Checking every folder
- * rather than only the first is what makes a multi-root workspace with the repo
- * in second position work at all.
+ * The first workspace folder that is inside a git repository, or failing that
+ * the first folder at all — reading code needs a folder, not a repository.
+ * Checking every folder rather than only the first is what makes a multi-root
+ * workspace with the repo in second position work.
  */
-async function findRepo(): Promise<GitContext | null> {
-  for (const folder of vscode.workspace.workspaceFolders ?? []) {
-    const ctx = await findGitContext(folder.uri.fsPath);
-    if (ctx) return ctx;
+async function findWorkspaceFolder(): Promise<WorkspaceContext | null> {
+  const folders = vscode.workspace.workspaceFolders ?? [];
+  for (const folder of folders) {
+    const git = await findGitContext(folder.uri.fsPath);
+    if (git) return workspaceFromGit(git);
   }
-  return null;
+  return folders.length > 0 ? findWorkspace(folders[0].uri.fsPath) : null;
 }
 
 let fallbackCommands: vscode.Disposable[] = [];
@@ -108,11 +113,7 @@ function installFallbackCommands(context: vscode.ExtensionContext): void {
           await vscode.commands.executeCommand(id);
           return;
         }
-        void vscode.window.showWarningMessage(
-          vscode.workspace.workspaceFolders?.length
-            ? 'Blindspot needs a git repository — this workspace is not inside one. Review coverage is measured against a diff.'
-            : 'Blindspot needs an open folder inside a git repository.',
-        );
+        void vscode.window.showWarningMessage('Blindspot needs an open folder to track reading in.');
       }),
     );
   }
@@ -138,6 +139,7 @@ class Controller implements vscode.Disposable {
   private refreshTimer: NodeJS.Timeout | undefined;
   private saveTimer: NodeJS.Timeout | undefined;
   private refreshing = false;
+  private lastRefreshError = '';
   private disposed = false;
   private readonly textCache = new Map<
     string,
@@ -146,21 +148,25 @@ class Controller implements vscode.Disposable {
 
   constructor(
     private readonly context: vscode.ExtensionContext,
-    private readonly git: GitContext,
+    private readonly ws: WorkspaceContext,
   ) {}
+
+  private get root(): string {
+    return this.ws.root;
+  }
 
   async start(): Promise<void> {
     this.cfg = await this.resolveConfig();
-    this.aiRegions = await loadAiRegions(this.git);
-    this.navigator = new Navigator(this.git.root);
+    this.aiRegions = await loadAiRegions(this.ws);
+    this.navigator = new Navigator(this.root);
 
-    this.tracker = new AttentionTracker(this.git, this.cfg, this.aiRegions, () =>
+    this.tracker = new AttentionTracker(this.ws, this.cfg, this.aiRegions, () =>
       this.scheduleSave(),
     );
-    this.tracker.start(await loadState(this.git));
+    this.tracker.start(await loadState(this.ws));
 
-    this.commitWatcher = new CommitWatcher(this.git.root, () => this.onStaged());
-    void this.commitWatcher.start();
+    this.commitWatcher = new CommitWatcher(this.root, () => this.onStaged());
+    if (this.ws.git) void this.commitWatcher.start();
 
     // Honour the setting at startup, not only when it next changes.
     this.decorations.setEnabled(this.setting('decorateUnreviewed', true));
@@ -175,9 +181,10 @@ class Controller implements vscode.Disposable {
       vscode.workspace.onDidChangeConfiguration((e) => {
         if (e.affectsConfiguration('blindspot')) void this.reloadConfig();
       }),
+      vscode.workspace.onDidGrantWorkspaceTrust(() => void this.reloadConfig()),
       vscode.workspace.onDidSaveTextDocument(() => void this.refresh()),
       vscode.window.onDidChangeVisibleTextEditors(() =>
-        this.decorations.apply(this.report, this.git.root),
+        this.decorations.apply(this.report, this.root),
       ),
       vscode.languages.registerHoverProvider(
         { scheme: 'file' },
@@ -198,7 +205,10 @@ class Controller implements vscode.Disposable {
   // ------------------------------------------------------------------ config
 
   private async resolveConfig(): Promise<BlindspotConfig> {
-    const fileCfg = await loadConfig(this.git);
+    // Repo config carries regular expressions that get compiled and run. In a
+    // Restricted Mode workspace that file is exactly what the user has not
+    // yet trusted, so tracking runs on the defaults until they do.
+    const fileCfg = vscode.workspace.isTrusted ? await loadConfig(this.ws) : DEFAULT_CONFIG;
     const s = vscode.workspace.getConfiguration('blindspot');
     return {
       ...fileCfg,
@@ -214,12 +224,15 @@ class Controller implements vscode.Disposable {
       peripheralFloor: s.get('peripheralFloor', fileCfg.peripheralFloor),
       contentScaling: s.get('contentScaling', fileCfg.contentScaling),
       revisitGapMs: s.get('revisitGapMs', fileCfg.revisitGapMs),
+      readAckMs: s.get('readAckMs', fileCfg.readAckMs),
+      focusCapMs: s.get('focusCapMs', fileCfg.focusCapMs),
+      idleAfterMs: s.get('idleAfterMs', fileCfg.idleAfterMs),
     };
   }
 
   private async reloadConfig(): Promise<void> {
     this.cfg = await this.resolveConfig();
-    this.aiRegions = await loadAiRegions(this.git);
+    this.aiRegions = await loadAiRegions(this.ws);
     this.tracker.updateConfig(this.cfg, this.aiRegions);
     this.decorations.setEnabled(
       vscode.workspace.getConfiguration('blindspot').get('decorateUnreviewed', true),
@@ -247,27 +260,84 @@ class Controller implements vscode.Disposable {
     }
     this.refreshing = true;
     try {
-      const baseRef = this.setting('baseRef', 'HEAD');
-      const diffs = await collectDiff(this.git, { baseRef });
+      const mode = this.targetMode();
       const sources = this.makeSources();
+      const { targets, baseRef } = await this.collectTargets(mode, sources);
       // Anchor persisted evidence for files that are not open in a tab, or
       // closing a file would silently erase the fact that you read it.
-      for (const d of diffs) {
+      for (const d of targets) {
         const text = sources.getText(d.file);
         if (text) this.tracker.primeFromText(d.file, text);
       }
-      this.report = buildReport(diffs, sources, this.cfg, baseRef);
+      this.report = buildReport(targets, sources, this.cfg, baseRef, Date.now(), {
+        mode,
+        activity: this.tracker.activityCounts,
+      });
       this.navigator.sync(this.report);
       this.statusBar.update(this.report, this.setting('showStatusBar', true));
-      this.decorations.apply(this.report, this.git.root);
+      this.decorations.apply(this.report, this.root);
       ReportPanel.active?.update(this.report);
       return this.report;
     } catch (err) {
       console.error('[blindspot] refresh failed', err);
+      // Refresh runs every few seconds; say it once per distinct failure, or a
+      // bad `blindspot.baseRef` would nag forever — or, worse, never be seen.
+      const message = err instanceof Error ? err.message : String(err);
+      if (message !== this.lastRefreshError) {
+        this.lastRefreshError = message;
+        void vscode.window.showWarningMessage(`Blindspot: ${message}`);
+      }
       return this.report;
     } finally {
       this.refreshing = false;
     }
+  }
+
+  /**
+   * What the report measures against. The setting wins when it can be
+   * honoured; without git only reading can be.
+   */
+  private targetMode(): TargetMode {
+    const s = this.setting<string>('target', 'auto');
+    if (!this.ws.git) return 'reading';
+    if (s === 'diff' || s === 'unreviewed' || s === 'reading') return s;
+    return 'unreviewed';
+  }
+
+  /**
+   * The code target for a mode. One engine, one report; only this differs
+   * between reading a codebase and reviewing a change.
+   */
+  private async collectTargets(
+    mode: TargetMode,
+    sources: ReportSources,
+  ): Promise<{ targets: FileDiff[]; baseRef: string }> {
+    if (mode === 'reading' || !this.ws.git) {
+      // Every file you have opened here, whole. Files never opened are not a
+      // target: a codebase is not a diff, and "0% of everything" is not a
+      // number anyone can act on.
+      // Open now or tracked before: a file you just opened is a target even
+      // before the first tick has credited anything to it.
+      const files = new Set(this.tracker.files());
+      for (const doc of vscode.workspace.textDocuments) {
+        const rel = this.relativePath(doc.uri);
+        if (rel) files.add(rel);
+      }
+      const targets: FileDiff[] = [];
+      for (const file of [...files].sort()) {
+        const text = sources.getText(file);
+        if (text) targets.push(wholeFileTarget(file, text));
+      }
+      return { targets, baseRef: 'workspace' };
+    }
+    let baseRef = this.setting('baseRef', 'HEAD');
+    if (mode === 'unreviewed') {
+      // Everything since the last completed review, the commits in between
+      // included. Until a review has been completed that is HEAD.
+      const b = this.tracker.reviewBaseline;
+      if (b && (await commitExists(this.ws.git, b.commit))) baseRef = b.commit;
+    }
+    return { targets: await collectDiff(this.ws.git, { baseRef }), baseRef };
   }
 
   /**
@@ -308,7 +378,7 @@ class Controller implements vscode.Disposable {
    * whether the read (not cheap) is needed at all.
    */
   private readFileCached(file: string): string[] | undefined {
-    const abs = path.join(this.git.root, file);
+    const abs = path.join(this.root, file);
     let stat: fs.Stats;
     try {
       stat = fs.statSync(abs);
@@ -338,7 +408,7 @@ class Controller implements vscode.Disposable {
    */
   private relativePath(uri: vscode.Uri): string | null {
     if (uri.scheme !== 'file') return null;
-    const rel = path.relative(this.git.root, uri.fsPath).split(path.sep).join('/');
+    const rel = path.relative(this.root, uri.fsPath).split(path.sep).join('/');
     if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) return null;
     return rel;
   }
@@ -361,7 +431,7 @@ class Controller implements vscode.Disposable {
     push('blindspot.toggleDecorations', async () => {
       const next = !this.decorations.isEnabled;
       this.decorations.setEnabled(next);
-      if (next) this.decorations.apply(this.report, this.git.root);
+      if (next) this.decorations.apply(this.report, this.root);
       await vscode.workspace
         .getConfiguration('blindspot')
         .update('decorateUnreviewed', next, vscode.ConfigurationTarget.Workspace);
@@ -400,10 +470,35 @@ class Controller implements vscode.Disposable {
       await this.refresh();
     });
 
+    push('blindspot.completeReview', () => this.completeReview());
+
+    push('blindspot.selectTarget', async () => {
+      const items: Array<vscode.QuickPickItem & { value: string }> = [
+        { value: 'auto', label: 'Auto', description: 'unreviewed changes in a repository, reading elsewhere' },
+        { value: 'unreviewed', label: 'Unreviewed changes', description: 'everything since the last completed review' },
+        { value: 'diff', label: 'Diff', description: 'working tree against blindspot.baseRef' },
+        { value: 'reading', label: 'Reading', description: 'every line of every file you have opened' },
+      ];
+      const pick = await vscode.window.showQuickPick(items, {
+        placeHolder: 'What should Blindspot measure?',
+      });
+      if (!pick) return;
+      await vscode.workspace
+        .getConfiguration('blindspot')
+        .update('target', pick.value, vscode.ConfigurationTarget.Workspace);
+      await this.refresh();
+    });
+
     push('blindspot.installGitHook', async () => {
+      if (!this.ws.git) {
+        void vscode.window.showWarningMessage(
+          'Blindspot: the pre-commit hook needs a git repository.',
+        );
+        return;
+      }
       try {
         const { path: hookPath, action } = await installHook(
-          this.git,
+          this.ws.git,
           path.join(this.context.extensionUri.fsPath, 'bin', 'blindspot.js'),
         );
         const message =
@@ -423,8 +518,12 @@ class Controller implements vscode.Disposable {
     // and opens the result is the wrong thing to leave lying around.
     if ('file' in m && !isRepoRelative(m.file)) return;
     switch (m.type) {
+      case 'completeReview':
+        await this.completeReview();
+        return;
       case 'open': {
-        const uri = vscode.Uri.file(path.join(this.git.root, m.file));
+        this.tracker.recordActivity('jumps');
+        const uri = vscode.Uri.file(path.join(this.root, m.file));
         const doc = await vscode.workspace.openTextDocument(uri);
         const editor = await vscode.window.showTextDocument(doc, vscode.ViewColumn.One);
         const line = Math.min(Math.max(0, m.line - 1), Math.max(0, doc.lineCount - 1));
@@ -461,11 +560,44 @@ class Controller implements vscode.Disposable {
     this.tracker.suppressCaretCredit(800);
     const hunk = await this.navigator.next();
     if (!hunk) return;
+    this.tracker.recordActivity('jumps');
     const severe = hunk.risk === 'critical' || hunk.risk === 'high';
     void vscode.window.setStatusBarMessage(
       `${severe ? '⚠️ ' : ''}Blindspot ${this.navigator.progress()} — ${hunk.file}:${hunk.startLine}` +
         `–${hunk.endLine} (${hunk.reason})`,
       6000,
+    );
+  }
+
+  /**
+   * "Reviewed up to here." The baseline moves to HEAD, so the next report
+   * measures only what lands after it. Without git there is no commit to
+   * anchor to.
+   */
+  private async completeReview(): Promise<void> {
+    if (!this.ws.git) {
+      void vscode.window.showWarningMessage('Blindspot: completing a review needs a git repository.');
+      return;
+    }
+    const head = await headCommit(this.ws.git);
+    if (!head) {
+      void vscode.window.showWarningMessage('Blindspot: no commit to set the review baseline at yet.');
+      return;
+    }
+    const unread = this.report?.unseenLines ?? 0;
+    if (unread > 0) {
+      const answer = await vscode.window.showWarningMessage(
+        `Complete the review with ${unread} unread lines? Everything up to ${head.slice(0, 7)} will count as reviewed.`,
+        { modal: true },
+        'Complete',
+      );
+      if (answer !== 'Complete') return;
+    }
+    this.tracker.setBaseline(head);
+    await this.flush();
+    await this.refresh();
+    void vscode.window.showInformationMessage(
+      `Blindspot: review baseline set at ${head.slice(0, 7)}.`,
     );
   }
 
@@ -511,7 +643,7 @@ class Controller implements vscode.Disposable {
     try {
       const sources = this.makeSources();
       const state = this.tracker.snapshot((file) => sources.getText(file));
-      await saveState(this.git, state);
+      await saveState(this.ws, state);
       this.tracker.clearDirty();
     } catch (err) {
       console.error('[blindspot] could not persist state', err);

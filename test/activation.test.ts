@@ -11,11 +11,12 @@ import { execFileSync } from 'node:child_process';
  * runs, and it is the one path the unit tests could not reach because it
  * imports `vscode`. So we supply just enough of `vscode` to run it.
  *
- * The scenario under test is the one that used to be a dead end: the extension
- * activates somewhere that is not a git repository. Previously it returned
+ * Two scenarios used to be dead ends. Activating with no folder returned
  * silently, which left every contributed command unregistered and the palette
- * answering "command not found" — the worst possible way to explain a missing
- * prerequisite.
+ * answering "command not found". Activating in a folder that is not a git
+ * repository refused to start at all — but reading code needs a folder, not a
+ * repository, so that now starts in reading mode and only the git-backed
+ * commands explain what is missing.
  */
 
 interface Stub {
@@ -43,6 +44,8 @@ function makeVscode(): any {
         return disposable(() => {});
       },
       onDidChangeConfiguration: () => disposable(() => {}),
+      isTrusted: true,
+      onDidGrantWorkspaceTrust: () => disposable(() => {}),
       onDidSaveTextDocument: () => disposable(() => {}),
       onDidCloseTextDocument: () => disposable(() => {}),
       onDidChangeTextDocument: () => disposable(() => {}),
@@ -61,6 +64,7 @@ function makeVscode(): any {
         return Promise.resolve(undefined);
       },
       showInformationMessage: () => Promise.resolve(undefined),
+      showQuickPick: () => Promise.resolve(undefined),
       onDidChangeWindowState: () => disposable(() => {}),
       onDidChangeTextEditorSelection: () => disposable(() => {}),
       onDidChangeVisibleTextEditors: () => disposable(() => {}),
@@ -80,7 +84,13 @@ function makeVscode(): any {
       },
       executeCommand: (id: string, ...args: any[]) => stub.commands.get(id)?.(...args),
     },
-    Uri: { file: (p: string) => ({ fsPath: p, toString: () => `file://${p}` }) },
+    Uri: {
+      file: (p: string) => ({ fsPath: p, toString: () => `file://${p}` }),
+      parse: (s: string) => ({ toString: () => s }),
+    },
+    MarkdownString: class {
+      constructor(public value = '') {}
+    },
     Disposable: class {},
     StatusBarAlignment: { Left: 1, Right: 2 },
     ViewColumn: { One: 1 },
@@ -164,15 +174,21 @@ describe('activation outside a git repository', { concurrency: 1 }, () => {
     }
   });
 
-  test('running one explains what is missing instead of throwing', async () => {
+  test('it starts in reading mode; only the git-backed commands explain what is missing', async () => {
     const dir = tempDir();
     stub.folders = [{ uri: { fsPath: dir } }];
     await extension.activate(fakeContext());
+    assert.deepEqual(stub.errors, []);
 
-    await stub.commands.get('blindspot.showReport')!();
-    assert.equal(stub.warnings.length, 1);
-    assert.match(stub.warnings[0], /git repository/i);
-    assert.equal(stub.errors.length, 0);
+    await stub.commands.get('blindspot.installGitHook')!();
+    await stub.commands.get('blindspot.completeReview')!();
+    assert.equal(stub.warnings.length, 2);
+    for (const w of stub.warnings) assert.match(w, /git repository/i);
+
+    // The tracker is live: navigating must not complain about a missing repo.
+    await stub.commands.get('blindspot.reviewBlindspot')!();
+    assert.equal(stub.warnings.length, 2);
+    assert.deepEqual(stub.errors, []);
   });
 
   test('with no folder open at all, it says so', async () => {

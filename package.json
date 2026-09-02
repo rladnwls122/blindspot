@@ -14,6 +14,12 @@
     "vscode": "^1.85.0",
     "node": ">=18"
   },
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "Review tracking works in Restricted Mode. The repository's .blindspot/config.json is ignored until the workspace is trusted."
+    }
+  },
   "categories": [
     "SCM Providers",
     "Visualization",
@@ -59,6 +65,14 @@
       {
         "command": "blindspot.installGitHook",
         "title": "Blindspot: Install pre-commit Hook"
+      },
+      {
+        "command": "blindspot.completeReview",
+        "title": "Blindspot: Complete Review (move baseline to HEAD)"
+      },
+      {
+        "command": "blindspot.selectTarget",
+        "title": "Blindspot: Select What to Measure"
       }
     ],
     "configuration": {
@@ -123,6 +137,33 @@
           "default": 20000,
           "description": "Time away after which returning to a line counts as re-reading it."
         },
+        "blindspot.readAckMs": {
+          "type": "number",
+          "default": 2000,
+          "description": "Focused time on a line before it counts as read. Credit grows linearly up to this; a line that merely flashed past earns almost nothing."
+        },
+        "blindspot.focusCapMs": {
+          "type": "number",
+          "default": 8000,
+          "description": "Focused time per line after which focus credit stops growing."
+        },
+        "blindspot.idleAfterMs": {
+          "type": "number",
+          "default": 60000,
+          "description": "With no caret, scroll or edit for this long, time on screen stops counting as reading."
+        },
+        "blindspot.target": {
+          "type": "string",
+          "enum": ["auto", "unreviewed", "diff", "reading"],
+          "enumDescriptions": [
+            "Unreviewed changes in a git repository; reading everywhere else.",
+            "Everything changed since the last completed review, commits included.",
+            "The working tree against blindspot.baseRef.",
+            "Every line of every file you have opened in this folder. Needs no git."
+          ],
+          "default": "auto",
+          "description": "What Blindspot measures reading against."
+        },
         "blindspot.readingSpeedGuard": {
           "type": "boolean",
           "default": true,
@@ -146,7 +187,7 @@
         "blindspot.decorateUnreviewed": {
           "type": "boolean",
           "default": true,
-          "description": "Mark changed-but-unreviewed lines in the gutter."
+          "description": "Mark unread lines with an orange bar in the gutter. The code itself is never recoloured."
         },
         "blindspot.baseRef": {
           "type": "string",
@@ -175,17 +216,8 @@
     },
     "colors": [
       {
-        "id": "blindspot.unreviewedBackground",
-        "description": "Background for changed lines you have not reviewed.",
-        "defaults": {
-          "dark": "#f9731633",
-          "light": "#f9731626",
-          "highContrast": "#f9731644"
-        }
-      },
-      {
         "id": "blindspot.unreviewedBorder",
-        "description": "Gutter marker for changed lines you have not reviewed.",
+        "description": "Overview-ruler marker for lines you have not read.",
         "defaults": {
           "dark": "#f97316",
           "light": "#ea580c",

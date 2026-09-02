@@ -1,6 +1,6 @@
 import { emptyEvidence, type LineEvidence, type Provenance } from './types';
 import { mergeEvidence, strongerProvenance } from './evidence';
-import { focalWeight, type FocalContext } from './attention';
+import { attentionShare, focalWeight, type FocalContext } from './attention';
 import { hashLine } from './hash';
 
 export interface StoredLine {
@@ -91,8 +91,10 @@ export class LineLedger {
       const weight = focus ? focalWeight(l, focus.line, focus.cfg) : 1;
       if (weight <= 0) continue;
       if (gap > 0 && ev.lastSeen !== null && now - ev.lastSeen >= gap) ev.revisits += 1;
+      // Exposure is per line: every line on screen was on screen. Attention
+      // is a budget: the tick's time is shared out, not handed to each line.
       ev.visibleMs += ms * weight;
-      if (focused) ev.focusedMs += ms * weight;
+      if (focused) ev.focusedMs += ms * (focus ? attentionShare(l, focus) : 1);
       ev.lastSeen = now;
     }
   }

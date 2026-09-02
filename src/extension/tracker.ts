@@ -3,10 +3,9 @@ import * as vscode from 'vscode';
 import type { BlindspotConfig } from '../core/config';
 import { LineLedger, hasEvidence, type StoredLine } from '../core/ledger';
 import { isIgnored } from '../core/coverage';
-import { focusLine } from '../core/attention';
-import type { LineEvidence, Provenance } from '../core/types';
+import { attentionNorm, focusLine } from '../core/attention';
+import { emptyActivity, type ActivityCounts, type LineEvidence, type Provenance } from '../core/types';
 import type { AiRegions, BlindspotState } from '../core/store';
-import type { GitContext } from './git';
 
 const TICK_MS = 250;
 /**
@@ -43,9 +42,13 @@ export class AttentionTracker implements vscode.Disposable {
   private suppressCaretUntil = 0;
   private dirty = false;
   private trackedMs = 0;
+  private activity: ActivityCounts = emptyActivity();
+  /** Last caret move, scroll or edit. Screen time past `idleAfterMs` from here is idling. */
+  private lastActivity = Date.now();
+  private baseline: BlindspotState['baseline'] = null;
 
   constructor(
-    private readonly ctx: GitContext,
+    private readonly ctx: { root: string },
     private cfg: BlindspotConfig,
     private aiRegions: AiRegions,
     private readonly onDirty: () => void,
@@ -53,6 +56,8 @@ export class AttentionTracker implements vscode.Disposable {
 
   start(state: BlindspotState): void {
     this.trackedMs = state.trackedMs;
+    this.activity = { ...state.activity };
+    this.baseline = state.baseline;
     for (const [file, lines] of Object.entries(state.files)) {
       this.pending.set(file, lines);
     }
@@ -63,6 +68,7 @@ export class AttentionTracker implements vscode.Disposable {
         // Coming back from another app should not be treated as a long pause
         // spent reading whatever is on screen.
         this.lastTick = Date.now();
+        this.lastActivity = this.lastTick;
         if (!s.focused) this.views.clear();
       }),
       vscode.window.onDidChangeTextEditorSelection((e) => this.onSelection(e)),
@@ -133,8 +139,12 @@ export class AttentionTracker implements vscode.Disposable {
     this.lastTick = now;
     if (dt <= 0 || dt > MAX_TICK_MS) return;
     if (!this.windowFocused) return;
+    // Nothing has moved for a long time. A file left on screen while you are
+    // in a meeting is not reading, and it is certainly not focus. A scroll
+    // ends it, so the viewports are still inspected below; only credit stops.
+    let idle = now - this.lastActivity > this.cfg.idleAfterMs;
+    let counted = false;
 
-    this.trackedMs += dt;
     const active = vscode.window.activeTextEditor;
 
     for (const editor of vscode.window.visibleTextEditors) {
@@ -152,6 +162,10 @@ export class AttentionTracker implements vscode.Disposable {
       let scrollSpeed = 0;
       if (prev) scrollSpeed = (Math.abs(topLine - prev.topLine) * 1000) / dt;
 
+      if (prev && prev.signature !== signature) {
+        this.lastActivity = now;
+        idle = false;
+      }
       const view: ViewState =
         prev && prev.signature === signature
           ? prev
@@ -160,17 +174,27 @@ export class AttentionTracker implements vscode.Disposable {
       this.views.set(vk, view);
 
       const tooFast = this.cfg.readingSpeedGuard && scrollSpeed > this.cfg.maxLinesPerSecond;
-      if (tooFast) continue;
+      if (tooFast || idle) continue;
+      if (!counted) {
+        this.trackedMs += dt;
+        counted = true;
+      }
 
       const isActive = active?.document === editor.document && active.viewColumn === editor.viewColumn;
       // Where attention plausibly sits inside this viewport. Without an eye
       // tracker the caret is the only thing the editor knows about it, so a
       // tick is shaped around the caret rather than handed out flat.
+      const focusAt = focusLine(
+        editor.selection.active.line + 1,
+        ranges[0].start.line + 1,
+        ranges[ranges.length - 1].end.line + 1,
+      );
       const focus = {
-        line: focusLine(
-          editor.selection.active.line + 1,
-          ranges[0].start.line + 1,
-          ranges[ranges.length - 1].end.line + 1,
+        line: focusAt,
+        norm: attentionNorm(
+          ranges.map((r) => [r.start.line + 1, r.end.line + 1] as [number, number]),
+          focusAt,
+          this.cfg,
         ),
         cfg: this.cfg,
       };
@@ -198,6 +222,8 @@ export class AttentionTracker implements vscode.Disposable {
     if (!file) return;
     const ledger = this.ledgerFor(e.textEditor.document, file);
     const now = Date.now();
+    this.lastActivity = now;
+    this.activity.navigations += 1;
     for (const sel of e.selections) {
       ledger.addCaret(sel.start.line + 1, sel.end.line + 1, now);
     }
@@ -210,6 +236,7 @@ export class AttentionTracker implements vscode.Disposable {
     if (e.contentChanges.length === 0) return;
     const ledger = this.ledgerFor(e.document, file);
     const now = Date.now();
+    this.lastActivity = now;
     const undoRedo =
       e.reason === vscode.TextDocumentChangeReason.Undo ||
       e.reason === vscode.TextDocumentChangeReason.Redo;
@@ -229,7 +256,35 @@ export class AttentionTracker implements vscode.Disposable {
       });
     }
     ledger.resize(e.document.lineCount);
+    if (!undoRedo && changes.some((c) => c.text.length < this.cfg.bulkInsertChars)) {
+      this.activity.edits += 1;
+    }
     this.markDirty();
+  }
+
+  /** A review action that is not a caret move or an edit. */
+  recordActivity(kind: 'jumps' | 'marks' | 'completions'): void {
+    this.activity[kind] += 1;
+    this.lastActivity = Date.now();
+    this.markDirty();
+  }
+
+  get activityCounts(): ActivityCounts {
+    return this.activity;
+  }
+
+  get reviewBaseline(): BlindspotState['baseline'] {
+    return this.baseline;
+  }
+
+  setBaseline(commit: string, now = Date.now()): void {
+    this.baseline = { commit, setAt: now };
+    this.recordActivity('completions');
+  }
+
+  /** Every file with evidence, open or persisted. What general reading measures. */
+  files(): string[] {
+    return [...new Set([...this.ledgers.keys(), ...this.pending.keys()])];
   }
 
   // ------------------------------------------------------------------ queries
@@ -270,15 +325,18 @@ export class AttentionTracker implements vscode.Disposable {
     this.ledgers.set(file, ledger);
     ledger.resize(Math.max(ledger.length, lineCount));
     const now = Date.now();
+    // Enough focused time to pass the read acknowledgement at any line cost.
+    const readMs = Math.max(this.cfg.focusedMsForPoint, this.cfg.readAckMs * this.cfg.maxReadCost);
     for (let l = 1; l <= Math.max(ledger.length, lineCount); l++) {
       const ev = ledger.at(l);
       ev.visibleMs = Math.max(ev.visibleMs, this.cfg.visibleMsForPoint);
-      ev.focusedMs = Math.max(ev.focusedMs, this.cfg.focusedMsForPoint);
+      ev.focusedMs = Math.max(ev.focusedMs, readMs);
       ev.dwellEvents = Math.max(ev.dwellEvents, 1);
       ev.caretHits = Math.max(ev.caretHits, 1);
       ev.revisits = Math.max(ev.revisits, this.cfg.revisitsForPoint);
       ev.lastSeen = now;
     }
+    this.activity.marks += 1;
     this.markDirty();
   }
 
@@ -287,6 +345,8 @@ export class AttentionTracker implements vscode.Disposable {
     this.pending.clear();
     this.views.clear();
     this.trackedMs = 0;
+    this.activity = emptyActivity();
+    this.baseline = null;
     this.markDirty();
   }
 
@@ -302,7 +362,14 @@ export class AttentionTracker implements vscode.Disposable {
       const serialized = ledger.serialize(textLines);
       if (serialized.length > 0) files[file] = serialized;
     }
-    return { version: 1, updatedAt: Date.now(), files, trackedMs: this.trackedMs };
+    return {
+      version: 1,
+      updatedAt: Date.now(),
+      files,
+      trackedMs: this.trackedMs,
+      activity: { ...this.activity },
+      baseline: this.baseline,
+    };
   }
 
   get isDirty(): boolean {

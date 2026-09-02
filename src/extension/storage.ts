@@ -12,27 +12,22 @@ import {
 } from '../core/store';
 import type { StoredLine } from '../core/ledger';
 import type { GitContext } from './git';
+import type { WorkspaceContext } from './workspace';
 
-const STATE_DIR = 'blindspot';
 const STATE_FILE = 'state.json';
 const PRUNE_AFTER_MS = 30 * 24 * 60 * 60 * 1000;
 
 /**
- * Where review evidence lives.
- *
- * `.git/blindspot/state.json` — inside the git directory, so it is per-clone,
- * never committed by accident, and disappears with the clone. Review attention
- * is personal telemetry about *you*; it should never end up in a shared branch.
+ * Where review evidence lives: `<stateDir>/state.json`. See `workspace.ts` for
+ * where that is — inside `.git` when there is one, so it is per-clone, never
+ * committed by accident, and disappears with the clone. Review attention is
+ * personal telemetry about *you*; it should never end up in a shared branch.
  */
-export function stateDir(ctx: GitContext): string {
-  return path.join(ctx.gitDir, STATE_DIR);
+export function statePath(ctx: WorkspaceContext): string {
+  return path.join(ctx.stateDir, STATE_FILE);
 }
 
-export function statePath(ctx: GitContext): string {
-  return path.join(stateDir(ctx), STATE_FILE);
-}
-
-export async function loadState(ctx: GitContext): Promise<BlindspotState> {
+export async function loadState(ctx: WorkspaceContext): Promise<BlindspotState> {
   try {
     const raw = await fs.readFile(statePath(ctx), 'utf8');
     return pruneState(parseState(raw), PRUNE_AFTER_MS);
@@ -45,9 +40,8 @@ export async function loadState(ctx: GitContext): Promise<BlindspotState> {
  * Write atomically. A half-written state file after a crash would silently
  * reset someone's review history, so we rename over the target instead.
  */
-export async function saveState(ctx: GitContext, state: BlindspotState): Promise<void> {
-  const dir = stateDir(ctx);
-  await fs.mkdir(dir, { recursive: true });
+export async function saveState(ctx: WorkspaceContext, state: BlindspotState): Promise<void> {
+  await fs.mkdir(ctx.stateDir, { recursive: true });
   const target = statePath(ctx);
   const tmp = `${target}.${process.pid}.tmp`;
   await fs.writeFile(tmp, serializeState(state), 'utf8');
@@ -59,7 +53,7 @@ export function fileState(state: BlindspotState, file: string): StoredLine[] {
 }
 
 /** Project config, committed so a team shares one definition of "risky". */
-export async function loadConfig(ctx: GitContext): Promise<BlindspotConfig> {
+export async function loadConfig(ctx: { root: string }): Promise<BlindspotConfig> {
   for (const candidate of ['.blindspot/config.json', '.blindspot.json']) {
     try {
       const raw = await fs.readFile(path.join(ctx.root, candidate), 'utf8');
@@ -73,7 +67,7 @@ export async function loadConfig(ctx: GitContext): Promise<BlindspotConfig> {
 }
 
 /** Regions an agent or CI declared as machine-written. */
-export async function loadAiRegions(ctx: GitContext): Promise<AiRegions> {
+export async function loadAiRegions(ctx: { root: string }): Promise<AiRegions> {
   try {
     const raw = await fs.readFile(path.join(ctx.root, '.blindspot/ai-regions.json'), 'utf8');
     return parseAiRegions(raw);

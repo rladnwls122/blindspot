@@ -1,7 +1,15 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULT_CONFIG } from '../src/core/config';
-import { evaluate, explain, isMachineAuthored, mergeEvidence, strongerProvenance } from '../src/core/evidence';
+import {
+  evaluate,
+  explain,
+  focusFraction,
+  isMachineAuthored,
+  mergeEvidence,
+  readFraction,
+  strongerProvenance,
+} from '../src/core/evidence';
 import { emptyEvidence, type LineEvidence } from '../src/core/types';
 
 const cfg = DEFAULT_CONFIG;
@@ -33,9 +41,33 @@ describe('the definition of "read"', () => {
   });
 
   test('visible plus a pause plus navigation counts as reviewed', () => {
-    const s = evaluate(ev({ visibleMs: 1500, focusedMs: 1500, dwellEvents: 1, caretHits: 1 }), cfg);
+    const s = evaluate(ev({ visibleMs: 2500, focusedMs: 2500, dwellEvents: 1, caretHits: 1 }), cfg);
     assert.equal(s.points >= cfg.reviewThresholdPoints, true);
     assert.equal(s.reviewed, true);
+  });
+
+  test('enough signals but under the read time is still not read', () => {
+    // Points say yes, the clock says no: a line that flashed past with the
+    // caret on it was not read, however many signals it collected.
+    const s = evaluate(ev({ visibleMs: 1500, focusedMs: 1500, dwellEvents: 1, caretHits: 1 }), cfg);
+    assert.equal(s.points >= cfg.reviewThresholdPoints, true);
+    assert.equal(s.reviewed, false);
+    assert.equal(s.readFraction, 0.75);
+  });
+
+  test('read credit grows with focused time and stops at one', () => {
+    assert.equal(readFraction(ev({}), cfg), 0);
+    assert.equal(readFraction(ev({ focusedMs: 1000 }), cfg), 0.5);
+    assert.equal(readFraction(ev({ focusedMs: 9000 }), cfg), 1);
+    // Focus keeps growing past the read time, up to its own cap.
+    assert.equal(focusFraction(ev({ focusedMs: 2000 }), cfg), 0.25);
+    assert.equal(focusFraction(ev({ focusedMs: 9000 }), cfg), 1);
+  });
+
+  test('a dense line needs proportionally longer', () => {
+    const dense = 'const token = jwt.sign({ sub: user.id, exp: now + ttl }, secret, { algorithm });';
+    assert.equal(readFraction(ev({ focusedMs: 2000 }), cfg, dense) < 1, true);
+    assert.equal(readFraction(ev({ focusedMs: 2000 }), cfg, '}') , 1);
   });
 });
 
@@ -101,7 +133,7 @@ describe('evaluate', () => {
 
   test('the threshold is configurable without touching the evidence', () => {
     const strict = { ...cfg, reviewThresholdPoints: 5 };
-    const evidence = ev({ visibleMs: 1500, focusedMs: 1500, dwellEvents: 1, caretHits: 1 });
+    const evidence = ev({ visibleMs: 2500, focusedMs: 2500, dwellEvents: 1, caretHits: 1 });
     assert.equal(evaluate(evidence, cfg).reviewed, true);
     assert.equal(evaluate(evidence, strict).reviewed, false);
   });

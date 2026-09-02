@@ -1,7 +1,9 @@
 import { test, describe, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import Module from 'node:module';
-import type { DiffReport } from '../src/core/types';
+import { emptyActivity, type DiffReport } from '../src/core/types';
+import { computeMetrics } from '../src/core/coverage';
+import { DEFAULT_CONFIG } from '../src/core/config';
 
 /**
  * The report panel is a webview with `enableScripts: true`, and much of what it
@@ -80,6 +82,8 @@ function report(file = HOSTILE): DiffReport {
   return {
     baseRef: `HEAD<script>`,
     generatedAt: 0,
+    mode: 'diff',
+    metrics: computeMetrics({ readSum: 0, focusSum: 0, effectiveMs: 0, reviewedLines: 0, targetLines: 0 }, emptyActivity(), DEFAULT_CONFIG),
     totalChangedLines: 10,
     reviewedLines: 4,
     unseenLines: 6,

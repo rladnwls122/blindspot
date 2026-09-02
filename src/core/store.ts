@@ -1,7 +1,10 @@
 import type { StoredLine } from './ledger';
-import { emptyEvidence, type LineEvidence, type Provenance } from './types';
+import { emptyActivity, emptyEvidence, type ActivityCounts, type LineEvidence, type Provenance } from './types';
 
-export const STATE_VERSION = 1;
+// 2: focused time became a conserved budget (see attention.ts). Evidence
+// recorded under version 1 handed every visible line the whole tick, so its
+// numbers are inflated and cannot be trusted; it is discarded, not converted.
+export const STATE_VERSION = 2;
 
 export interface BlindspotState {
   version: number;
@@ -10,10 +13,24 @@ export interface BlindspotState {
   files: Record<string, StoredLine[]>;
   /** Cumulative wall-clock ms spent with Blindspot tracking in this repo. */
   trackedMs: number;
+  /** Review actions, counted. Stored beside the evidence, never folded into it. */
+  activity: ActivityCounts;
+  /**
+   * The commit the last completed review ended at. Everything committed after
+   * it is unreviewed until the next completion. Null until a review completes.
+   */
+  baseline: { commit: string; setAt: number } | null;
 }
 
 export function emptyState(): BlindspotState {
-  return { version: STATE_VERSION, updatedAt: Date.now(), files: {}, trackedMs: 0 };
+  return {
+    version: STATE_VERSION,
+    updatedAt: Date.now(),
+    files: {},
+    trackedMs: 0,
+    activity: emptyActivity(),
+    baseline: null,
+  };
 }
 
 /**
@@ -52,7 +69,25 @@ export function parseState(raw: string): BlindspotState {
     updatedAt: num(obj.updatedAt, Date.now()),
     files,
     trackedMs: num(obj.trackedMs, 0),
+    activity: parseActivity(obj.activity),
+    baseline: parseBaseline(obj.baseline),
   };
+}
+
+function parseActivity(v: unknown): ActivityCounts {
+  const out = emptyActivity();
+  if (!v || typeof v !== 'object') return out;
+  const o = v as Record<string, unknown>;
+  for (const k of Object.keys(out) as Array<keyof ActivityCounts>) out[k] = num(o[k], 0);
+  return out;
+}
+
+function parseBaseline(v: unknown): BlindspotState['baseline'] {
+  if (!v || typeof v !== 'object') return null;
+  const o = v as Record<string, unknown>;
+  // A commit hash is hex; anything else is not something to hand to git.
+  if (typeof o.commit !== 'string' || !/^[0-9a-f]{7,64}$/i.test(o.commit)) return null;
+  return { commit: o.commit, setAt: num(o.setAt, 0) };
 }
 
 function parseStoredLine(entry: unknown): StoredLine | null {
