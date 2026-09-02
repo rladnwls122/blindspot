@@ -26,6 +26,10 @@ interface Stub {
   /** Make one late step of startup blow up, to test the failure path. */
   failHoverRegistration: boolean;
   folderListeners: Array<() => void>;
+  /** Tree data providers by view id, as `createTreeView` received them. */
+  treeViews: Map<string, any>;
+  /** `setContext` calls, keyed by context key. */
+  contextKeys: Map<string, unknown>;
 }
 
 let stub: Stub;
@@ -66,6 +70,10 @@ function makeVscode(): any {
       onDidChangeVisibleTextEditors: () => disposable(() => {}),
       createStatusBarItem: () => ({ show() {}, hide() {}, dispose() {}, text: '', tooltip: '' }),
       createTextEditorDecorationType: () => ({ dispose() {} }),
+      createTreeView: (id: string, options: { treeDataProvider: unknown }) => {
+        stub.treeViews.set(id, options.treeDataProvider);
+        return disposable(() => stub.treeViews.delete(id));
+      },
     },
     languages: {
       registerHoverProvider: () => {
@@ -78,7 +86,13 @@ function makeVscode(): any {
         stub.commands.set(id, fn);
         return disposable(() => stub.commands.delete(id));
       },
-      executeCommand: (id: string, ...args: any[]) => stub.commands.get(id)?.(...args),
+      executeCommand: (id: string, ...args: any[]) => {
+        if (id === 'setContext') {
+          stub.contextKeys.set(args[0], args[1]);
+          return Promise.resolve();
+        }
+        return stub.commands.get(id)?.(...args);
+      },
     },
     Uri: { file: (p: string) => ({ fsPath: p, toString: () => `file://${p}` }) },
     Disposable: class {},
@@ -89,6 +103,11 @@ function makeVscode(): any {
     Range: class {},
     Selection: class {},
     ThemeColor: class {},
+    ThemeIcon: class {},
+    TreeItem: class {
+      constructor(public label: string) {}
+    },
+    TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
     TextEditorRevealType: { InCenter: 2 },
     OverviewRulerLane: { Right: 4 },
     EventEmitter: class {
@@ -146,6 +165,8 @@ describe('activation outside a git repository', { concurrency: 1 }, () => {
       folders: [],
       folderListeners: [],
       failHoverRegistration: false,
+      treeViews: new Map(),
+      contextKeys: new Map(),
     };
   });
   afterEach(teardown);
@@ -180,6 +201,21 @@ describe('activation outside a git repository', { concurrency: 1 }, () => {
     await stub.commands.get('blindspot.reviewBlindspot')!();
     assert.match(stub.warnings[0], /open folder/i);
   });
+
+  test('the sidebar view has a provider, and its welcome text knows there is no repo', async () => {
+    const dir = tempDir();
+    stub.folders = [{ uri: { fsPath: dir } }];
+    await extension.activate(fakeContext());
+
+    // A view contributed in package.json with nobody behind it shows "no data
+    // provider registered" — the least helpful thing an empty sidebar can say.
+    const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '../../package.json'), 'utf8'));
+    const viewId = pkg.contributes.views.blindspot[0].id;
+    const provider = stub.treeViews.get(viewId);
+    assert.ok(provider, `a tree data provider must be registered for ${viewId}`);
+    assert.deepEqual(provider.getChildren(), []);
+    assert.equal(stub.contextKeys.get('blindspot.repo'), false);
+  });
 });
 
 describe('activation inside a git repository', { concurrency: 1 }, () => {
@@ -191,6 +227,8 @@ describe('activation inside a git repository', { concurrency: 1 }, () => {
       folders: [],
       folderListeners: [],
       failHoverRegistration: false,
+      treeViews: new Map(),
+      contextKeys: new Map(),
     };
   });
   afterEach(teardown);
@@ -228,5 +266,22 @@ describe('activation inside a git repository', { concurrency: 1 }, () => {
     // A brand-new repository has no HEAD to diff against; starting up in one
     // must not be an error the user has to see.
     assert.deepEqual(stub.errors, []);
+  });
+
+  test('the dashboard button opens the same panel as Show Review Report', async () => {
+    const repo = tempDir();
+    execFileSync('git', ['init', '-q'], { cwd: repo });
+    stub.folders = [{ uri: { fsPath: repo } }];
+    await extension.activate(fakeContext());
+
+    assert.equal(stub.contextKeys.get('blindspot.repo'), true);
+    // Both ids are real handlers, and the run-dashboard one reaches the panel
+    // — the stub has no createWebviewPanel, so reaching it is the failure.
+    assert.equal(stub.commands.has('blindspot.runDashboard'), true);
+    await assert.rejects(
+      () => stub.commands.get('blindspot.runDashboard')!(),
+      /createWebviewPanel is not a function/,
+    );
+    assert.equal(stub.warnings.filter((w) => /git repository/i.test(w)).length, 0);
   });
 });

@@ -41,6 +41,16 @@
         "icon": "$(eye)"
       },
       {
+        "command": "blindspot.runDashboard",
+        "title": "Blindspot: Run Dashboard",
+        "icon": "$(dashboard)"
+      },
+      {
+        "command": "blindspot.refresh",
+        "title": "Blindspot: Refresh",
+        "icon": "$(refresh)"
+      },
+      {
         "command": "blindspot.reviewBlindspot",
         "title": "Blindspot: Review Blindspot (jump to next unseen hunk)"
       },
@@ -67,7 +77,7 @@
         "blindspot.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Track review attention in this workspace."
+          "markdownDescription": "Track review attention in this workspace. [Run Dashboard](command:blindspot.runDashboard) opens the report panel."
         },
         "blindspot.reviewThresholdPoints": {
           "type": "number",
@@ -166,6 +176,18 @@
       }
     },
     "menus": {
+      "view/title": [
+        {
+          "command": "blindspot.runDashboard",
+          "when": "view == blindspot.sidebar",
+          "group": "navigation@1"
+        },
+        {
+          "command": "blindspot.refresh",
+          "when": "view == blindspot.sidebar",
+          "group": "navigation@2"
+        }
+      ],
       "scm/title": [
         {
           "command": "blindspot.showReport",
@@ -191,6 +213,37 @@
           "light": "#ea580c",
           "highContrast": "#f97316"
         }
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "blindspot",
+          "title": "Blindspot",
+          "icon": "media/activity.svg"
+        }
+      ]
+    },
+    "views": {
+      "blindspot": [
+        {
+          "id": "blindspot.sidebar",
+          "name": "Review Coverage",
+          "icon": "media/activity.svg",
+          "contextualTitle": "Blindspot"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "blindspot.sidebar",
+        "when": "!blindspot.repo",
+        "contents": "Blindspot needs a git repository — review coverage is measured against a diff.\n\nOpen a folder inside one and this view fills in."
+      },
+      {
+        "view": "blindspot.sidebar",
+        "when": "blindspot.repo",
+        "contents": "No changes to review yet. Blindspot starts measuring as soon as you change something.\n\n[Run Dashboard](command:blindspot.runDashboard)"
       }
     ]
   },

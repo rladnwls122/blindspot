@@ -12,6 +12,7 @@ import { EvidenceHover } from './hover';
 import { collectDiff, findGitContext, type GitContext } from './git';
 import { Navigator } from './navigator';
 import { ReportPanel, type PanelMessage } from './panel';
+import { SidebarProvider, type FileNode } from './sidebar';
 import { StatusBar } from './statusbar';
 import { installHook, loadAiRegions, loadConfig, loadState, saveState } from './storage';
 import { AttentionTracker, docLines } from './tracker';
@@ -29,10 +30,18 @@ function isRepoRelative(file: string): boolean {
 }
 
 let controller: Controller | undefined;
+/**
+ * The Activity Bar view. Registered at activation, before we know whether
+ * there is a repository: a view contributed in package.json with no provider
+ * behind it shows "no data provider registered", which explains nothing.
+ */
+let sidebar: SidebarProvider | undefined;
 
 /** Every command the extension contributes, in package.json order. */
 const COMMAND_IDS = [
   'blindspot.showReport',
+  'blindspot.runDashboard',
+  'blindspot.refresh',
   'blindspot.reviewBlindspot',
   'blindspot.toggleDecorations',
   'blindspot.markFileReviewed',
@@ -41,6 +50,15 @@ const COMMAND_IDS = [
 ] as const;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
+  sidebar = new SidebarProvider();
+  context.subscriptions.push(
+    sidebar,
+    vscode.window.createTreeView(SidebarProvider.viewId, {
+      treeDataProvider: sidebar,
+      showCollapseAll: false,
+    }),
+  );
+  await setRepoContext(false);
   if (!(await tryStart(context))) {
     // No repo yet, or startup failed. Register the commands anyway so the
     // palette explains itself instead of answering "command not found", and
@@ -58,11 +76,12 @@ async function tryStart(context: vscode.ExtensionContext): Promise<boolean> {
   if (controller) return true;
   const ctx = await findRepo();
   if (!ctx) return false;
-  const started = new Controller(context, ctx);
+  const started = new Controller(context, ctx, sidebar);
   try {
     await started.start();
     controller = started;
     context.subscriptions.push(started);
+    await setRepoContext(true);
     return true;
   } catch (err) {
     // Startup gets partway through before it fails, and what it got through is
@@ -75,6 +94,15 @@ async function tryStart(context: vscode.ExtensionContext): Promise<boolean> {
       `Blindspot could not start: ${err instanceof Error ? err.message : String(err)}`,
     );
     return false;
+  }
+}
+
+/** Drives the sidebar's welcome text: what is missing, or what to do next. */
+async function setRepoContext(hasRepo: boolean): Promise<void> {
+  try {
+    await vscode.commands.executeCommand('setContext', 'blindspot.repo', hasRepo);
+  } catch {
+    /* a welcome message is not worth failing activation over */
   }
 }
 
@@ -122,6 +150,7 @@ function installFallbackCommands(context: vscode.ExtensionContext): void {
 export function deactivate(): Promise<void> | void {
   const pending = controller?.flush();
   controller = undefined;
+  sidebar = undefined;
   disposeFallbackCommands();
   return pending;
 }
@@ -147,6 +176,7 @@ class Controller implements vscode.Disposable {
   constructor(
     private readonly context: vscode.ExtensionContext,
     private readonly git: GitContext,
+    private readonly sidebar: SidebarProvider | undefined,
   ) {}
 
   async start(): Promise<void> {
@@ -260,6 +290,7 @@ class Controller implements vscode.Disposable {
       this.navigator.sync(this.report);
       this.statusBar.update(this.report, this.setting('showStatusBar', true));
       this.decorations.apply(this.report, this.git.root);
+      this.sidebar?.update(this.report);
       ReportPanel.active?.update(this.report);
       return this.report;
     } catch (err) {
@@ -351,9 +382,22 @@ class Controller implements vscode.Disposable {
     const push = (id: string, fn: (...args: any[]) => any) =>
       this.context.subscriptions.push(vscode.commands.registerCommand(id, fn));
 
-    push('blindspot.showReport', async () => {
+    const showReport = async () => {
       const report = (await this.refresh()) ?? this.report;
       ReportPanel.show(this.context.extensionUri, (m) => void this.onPanelMessage(m), report);
+    };
+    push('blindspot.showReport', showReport);
+    // The sidebar's title button. Same panel as Show Review Report — one
+    // dashboard, reached from two places, so they can never disagree.
+    push('blindspot.runDashboard', showReport);
+
+    push('blindspot.refresh', () => this.refresh());
+
+    // A row in the sidebar. Lands on the file's first unread line, the way
+    // Review Blindspot does, and never on a path the tree did not build.
+    push('blindspot.revealFile', async (node?: FileNode) => {
+      if (!node || node.kind !== 'file' || !isRepoRelative(node.file)) return;
+      await this.openAt(node.file, node.firstUnreadLine ?? 1);
     });
 
     push('blindspot.reviewBlindspot', () => this.reviewNext());
@@ -423,16 +467,9 @@ class Controller implements vscode.Disposable {
     // and opens the result is the wrong thing to leave lying around.
     if ('file' in m && !isRepoRelative(m.file)) return;
     switch (m.type) {
-      case 'open': {
-        const uri = vscode.Uri.file(path.join(this.git.root, m.file));
-        const doc = await vscode.workspace.openTextDocument(uri);
-        const editor = await vscode.window.showTextDocument(doc, vscode.ViewColumn.One);
-        const line = Math.min(Math.max(0, m.line - 1), Math.max(0, doc.lineCount - 1));
-        this.tracker.suppressCaretCredit();
-        editor.revealRange(new vscode.Range(line, 0, line, 0), vscode.TextEditorRevealType.InCenter);
-        editor.selection = new vscode.Selection(line, 0, line, 0);
+      case 'open':
+        await this.openAt(m.file, m.line);
         return;
-      }
       case 'reviewNext':
         await this.reviewNext();
         return;
@@ -446,6 +483,17 @@ class Controller implements vscode.Disposable {
         return;
       }
     }
+  }
+
+  /** Open a repo file with the caret parked on a 1-based line, without crediting the jump. */
+  private async openAt(file: string, line1: number): Promise<void> {
+    const uri = vscode.Uri.file(path.join(this.git.root, file));
+    const doc = await vscode.workspace.openTextDocument(uri);
+    const editor = await vscode.window.showTextDocument(doc, vscode.ViewColumn.One);
+    const line = Math.min(Math.max(0, line1 - 1), Math.max(0, doc.lineCount - 1));
+    this.tracker.suppressCaretCredit();
+    editor.revealRange(new vscode.Range(line, 0, line, 0), vscode.TextEditorRevealType.InCenter);
+    editor.selection = new vscode.Selection(line, 0, line, 0);
   }
 
   private async reviewNext(): Promise<void> {

@@ -9,3 +9,4 @@ export * from './coverage';
 export * from './score';
 export * from './store';
 export * from './render';
+export * from './tree';

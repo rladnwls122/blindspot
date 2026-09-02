@@ -211,15 +211,16 @@ npm run package                              # produces blindspot-0.3.1.vsix
 code --install-extension blindspot-0.3.1.vsix
 ```
 
-Open a git repository and coverage appears in the status bar. Outside one the
-commands still register and tell you what is missing.
+Open a git repository and coverage appears in the status bar, and in the
+Blindspot view in the Activity Bar. Outside one the commands still register and
+tell you what is missing.
 
 To work on it:
 
 ```bash
 npm install
 npm run build
-npm test           # 169 tests: the model, the CLI, a real git repo, the extension
+npm test           # 178 tests: the model, the CLI, a real git repo, the extension
 npm run demo       # replay a scripted session through the real model
 npm run demo:page  # regenerate demo/index.html — the interactive version
 npm run icon       # regenerate media/icon.png
@@ -233,11 +234,30 @@ ranking, the Review Score — recomputes from the same per-line signals the
 extension records. It is generated from `demo/page.template.html`, so the
 numbers in it can never drift from the model.
 
+### Sidebar
+
+The eye icon in the Activity Bar opens a native tree view — the same numbers as
+the status bar and the panel, one row per changed file, worst blindspot first:
+
+```
+BLINDSPOT                         [dashboard] [refresh]
+└─ Diff  ·  36% unread
+   ├─ ⚠ src/auth/session.ts       24%  26 unread
+   ├─   src/api/orders.ts         67%  20 unread
+   └─   README.md                 43%  16 unread
+```
+
+Clicking a row opens the file at its first unread line without crediting the
+jump as reading. The **Run Dashboard** button in the view title opens the report
+panel; the same link sits in the native settings page under `Blindspot: Enabled`.
+
 ### Commands
 
 | command | what it does |
 | --- | --- |
 | `Blindspot: Show Review Report` | the panel above |
+| `Blindspot: Run Dashboard` | the same panel, from the sidebar's title button |
+| `Blindspot: Refresh` | recompute the diff and the report now |
 | `Blindspot: Review Blindspot` | jump to the next unread hunk, worst risk first |
 | `Blindspot: Mark Current File As Reviewed` | "I read this in the GitHub UI" |
 | `Blindspot: Install pre-commit Hook` | print the card at commit time |
@@ -302,7 +322,7 @@ src/core/        the model — no vscode import, fully unit-tested
   ledger.ts        line identity across edits and reloads
   coverage.ts      diff × evidence → report
   score.ts         the composite
-src/extension/   the editor glue (tracker, panel, decorations, git)
+src/extension/   the editor glue (tracker, panel, sidebar, decorations, git)
 src/cli/         `blindspot` — the hook and CI entry point
 demo/            replay a scripted session through the real model
 ```

@@ -1,5 +1,19 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- A Blindspot view in the Activity Bar: a native tree view with one row per
+  changed file, the unread share beside each, and a warning on files whose
+  unread lines are in high-risk code. Clicking a row opens the file at its
+  first unread line without crediting the jump. The tree is built by a pure
+  function in `src/core/tree.ts`, so it can never disagree with the status bar
+  or the panel — and it is tested without an editor.
+- **Run Dashboard** (`blindspot.runDashboard`): a button in the view's title
+  that opens the report panel. The same command is linked from the native
+  settings page (`Blindspot: Enabled`), and **Refresh** sits next to it.
+
 ## [0.3.1] — 2026-09-01
 
 ### Added

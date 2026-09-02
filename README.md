@@ -254,15 +254,16 @@ npm run package                              # blindspot-0.3.1.vsix 생성
 code --install-extension blindspot-0.3.1.vsix
 ```
 
-git 저장소가 열려 있으면 바로 상태 표시줄에 커버리지가 뜹니다.
-저장소가 아닌 폴더에서도 명령은 등록되며, 무엇이 없는지 알려 줍니다.
+git 저장소가 열려 있으면 바로 상태 표시줄과 Activity Bar의 Blindspot 뷰에
+커버리지가 뜹니다. 저장소가 아닌 폴더에서도 명령은 등록되며, 무엇이 없는지 알려
+줍니다.
 
 개발하려는 경우:
 
 ```bash
 npm install
 npm run build
-npm test           # 169개 테스트 (모델, CLI, 실제 git 저장소, 그리고 확장 자체)
+npm test           # 178개 테스트 (모델, CLI, 실제 git 저장소, 그리고 확장 자체)
 npm run demo       # 스크립트 세션을 실제 모델로 재생
 npm run demo:page  # demo/index.html 재생성 — 인터랙티브 버전
 npm run icon       # media/icon.png 재생성
@@ -275,11 +276,30 @@ npm run icon       # media/icon.png 재생성
 확장이 기록하는 것과 동일한 per-line 신호에서 다시 계산됩니다.
 `demo/page.template.html`에서 생성되므로 그 안의 숫자가 모델과 어긋날 수 없습니다.
 
+### 사이드바
+
+Activity Bar의 눈 아이콘을 누르면 네이티브 트리 뷰가 열립니다. 상태 표시줄·패널과
+같은 숫자를, 변경된 파일마다 한 줄씩, 위험한 blindspot부터 보여 줍니다.
+
+```
+BLINDSPOT                         [dashboard] [refresh]
+└─ Diff  ·  36% unread
+   ├─ ⚠ src/auth/session.ts       24%  26 unread
+   ├─   src/api/orders.ts         67%  20 unread
+   └─   README.md                 43%  16 unread
+```
+
+줄을 클릭하면 그 파일의 첫 미독 줄로 이동하며, 이 점프는 읽은 것으로 치지 않습니다.
+뷰 제목의 **Run Dashboard** 버튼이 리포트 패널을 띄웁니다. 같은 링크가 네이티브
+설정 페이지의 `Blindspot: Enabled` 항목에도 있습니다.
+
 ### 명령
 
 | 명령 | 하는 일 |
 | --- | --- |
 | `Blindspot: Show Review Report` | 위의 패널 |
+| `Blindspot: Run Dashboard` | 같은 패널, 사이드바 제목 버튼에서 |
+| `Blindspot: Refresh` | diff와 리포트를 지금 다시 계산 |
 | `Blindspot: Review Blindspot` | 안 읽은 hunk로 점프, 위험도 높은 순 |
 | `Blindspot: Mark Current File As Reviewed` | "이건 GitHub UI에서 읽었다" |
 | `Blindspot: Install pre-commit Hook` | 커밋 시점에 카드 출력 |
