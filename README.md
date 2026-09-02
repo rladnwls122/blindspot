@@ -263,7 +263,7 @@ git 저장소가 열려 있으면 바로 상태 표시줄과 Activity Bar의 Bli
 ```bash
 npm install
 npm run build
-npm test           # 183개 테스트 (모델, CLI, 실제 git 저장소, 그리고 확장 자체)
+npm test           # 184개 테스트 (모델, CLI, 실제 git 저장소, 그리고 확장 자체)
 npm run demo       # 스크립트 세션을 실제 모델로 재생
 npm run demo:page  # demo/index.html 재생성 — 인터랙티브 버전
 npm run icon       # media/icon.png 재생성

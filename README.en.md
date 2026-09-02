@@ -220,7 +220,7 @@ To work on it:
 ```bash
 npm install
 npm run build
-npm test           # 183 tests: the model, the CLI, a real git repo, the extension
+npm test           # 184 tests: the model, the CLI, a real git repo, the extension
 npm run demo       # replay a scripted session through the real model
 npm run demo:page  # regenerate demo/index.html — the interactive version
 npm run icon       # regenerate media/icon.png

@@ -30,6 +30,8 @@ interface Stub {
   treeViews: Map<string, any>;
   /** `setContext` calls, keyed by context key. */
   contextKeys: Map<string, unknown>;
+  /** Overrides for `blindspot.*` settings, by bare key. */
+  settings: Map<string, unknown>;
 }
 
 let stub: Stub;
@@ -41,7 +43,10 @@ function makeVscode(): any {
       get workspaceFolders() {
         return stub.folders.length > 0 ? stub.folders : undefined;
       },
-      getConfiguration: () => ({ get: (_k: string, d: unknown) => d, update: async () => {} }),
+      getConfiguration: () => ({
+        get: (k: string, d: unknown) => (stub.settings.has(k) ? stub.settings.get(k) : d),
+        update: async () => {},
+      }),
       onDidChangeWorkspaceFolders: (fn: () => void) => {
         stub.folderListeners.push(fn);
         return disposable(() => {});
@@ -83,8 +88,12 @@ function makeVscode(): any {
     },
     commands: {
       registerCommand: (id: string, fn: (...args: any[]) => any) => {
+        // Real VS Code refuses a second registration of the same id.
+        if (stub.commands.has(id)) throw new Error(`command '${id}' already exists`);
         stub.commands.set(id, fn);
-        return disposable(() => stub.commands.delete(id));
+        return disposable(() => {
+          if (stub.commands.get(id) === fn) stub.commands.delete(id);
+        });
       },
       executeCommand: (id: string, ...args: any[]) => {
         if (id === 'setContext') {
@@ -167,6 +176,7 @@ describe('activation outside a git repository', { concurrency: 1 }, () => {
       failHoverRegistration: false,
       treeViews: new Map(),
       contextKeys: new Map(),
+      settings: new Map(),
     };
   });
   afterEach(teardown);
@@ -229,6 +239,7 @@ describe('activation inside a git repository', { concurrency: 1 }, () => {
       failHoverRegistration: false,
       treeViews: new Map(),
       contextKeys: new Map(),
+      settings: new Map(),
     };
   });
   afterEach(teardown);
@@ -244,7 +255,31 @@ describe('activation inside a git repository', { concurrency: 1 }, () => {
     assert.equal(stub.errors.length, 1);
     assert.match(stub.errors[0], /could not start/i);
     // And the commands still exist, so the palette explains rather than 404s.
+    // They are the fallback handlers: the failed controller released its ids
+    // (the stub throws on a duplicate registration, as VS Code does), so
+    // running one explains what is wrong instead of driving a dead controller.
     assert.equal(stub.commands.has('blindspot.showReport'), true);
+    await stub.commands.get('blindspot.showReport')!();
+    assert.equal(stub.errors.length, 2, 'the retry fails the same way and says so');
+  });
+
+  test('with tracking disabled, the sidebar and the panel say so rather than going stale', async () => {
+    const repo = tempDir();
+    execFileSync('git', ['init', '-q'], { cwd: repo });
+    stub.folders = [{ uri: { fsPath: repo } }];
+    stub.settings.set('enabled', false);
+    await extension.activate(fakeContext());
+
+    assert.equal(stub.contextKeys.get('blindspot.repo'), true);
+    assert.equal(stub.contextKeys.get('blindspot.enabled'), false);
+    const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '../../package.json'), 'utf8'));
+    const provider = stub.treeViews.get(pkg.contributes.views.blindspot[0].id);
+    assert.deepEqual(provider.getChildren(), []);
+    // And the welcome text for that state exists in the manifest.
+    const welcome = pkg.contributes.viewsWelcome.find(
+      (w: { when: string }) => w.when === 'blindspot.repo && !blindspot.enabled',
+    );
+    assert.match(welcome.contents, /disabled/);
   });
 
   test('a repository in second position in a multi-root workspace is found', async () => {

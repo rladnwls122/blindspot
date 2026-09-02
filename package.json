@@ -242,7 +242,12 @@
       },
       {
         "view": "blindspot.sidebar",
-        "when": "blindspot.repo",
+        "when": "blindspot.repo && !blindspot.enabled",
+        "contents": "Tracking is disabled in this workspace (`blindspot.enabled`).\n\n[Open Settings](command:workbench.action.openSettings?%5B%22blindspot.enabled%22%5D)"
+      },
+      {
+        "view": "blindspot.sidebar",
+        "when": "blindspot.repo && blindspot.enabled",
         "contents": "No changes to review yet. Blindspot starts measuring as soon as you change something.\n\n[Run Dashboard](command:blindspot.runDashboard)"
       }
     ]

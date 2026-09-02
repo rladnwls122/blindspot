@@ -36,6 +36,13 @@
   file moved and refresh the report instead of failing on it again.
 - A command that throws now reports its own error message, not VS Code's
   generic "command failed" naming the id.
+- A controller that failed partway through startup kept its command ids
+  registered, so the fallback handlers could not take them back and VS Code
+  rejected the second registration. The controller now owns and releases
+  everything it registered.
+- Turning `blindspot.enabled` off left the last report on screen in the
+  sidebar, the markers and the panel as if it were live. All three now say
+  tracking is off.
 
 ## [0.3.1] — 2026-09-01
 

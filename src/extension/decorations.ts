@@ -72,9 +72,10 @@ export class Decorations implements vscode.Disposable {
     // report is rebuilt every few seconds whether or not anything changed.
     // The document version is part of the key because the ranges below are
     // clamped to the current line count.
-    const key =
-      `${editor.document.version}|` +
-      hunks.map((h) => `${h.startLine}-${h.endLine}:${h.risk}:${h.reason}:${h.aiRatio}`).join(',');
+    // An editor that has never been decorated and has nothing to show needs
+    // nothing sent at all.
+    if (hunks.length === 0 && !this.applied.has(editor)) return;
+    const key = `${editor.document.version}|${JSON.stringify(hunks)}`;
     if (this.applied.get(editor) === key) return;
     this.applied.set(editor, key);
 
@@ -98,6 +99,11 @@ export class Decorations implements vscode.Disposable {
 
     editor.setDecorations(this.unreviewed, plain);
     editor.setDecorations(this.severe, risky);
+  }
+
+  /** Remove every marker without changing whether markers are enabled. */
+  clear(): void {
+    this.clearAll();
   }
 
   private clearAll(): void {

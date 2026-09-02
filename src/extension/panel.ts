@@ -21,7 +21,7 @@ export class ReportPanel {
   private readonly panel: vscode.WebviewPanel;
   private readonly disposables: vscode.Disposable[] = [];
   private report: DiffReport | null = null;
-  private signature = '';
+  private signature: string | undefined;
 
   static show(
     extensionUri: vscode.Uri,
@@ -31,7 +31,7 @@ export class ReportPanel {
     const column = vscode.window.activeTextEditor?.viewColumn ?? vscode.ViewColumn.One;
     if (ReportPanel.current) {
       ReportPanel.current.panel.reveal(column, true);
-      if (report) ReportPanel.current.update(report);
+      ReportPanel.current.update(report);
       return ReportPanel.current;
     }
     const panel = vscode.window.createWebviewPanel(
@@ -44,8 +44,7 @@ export class ReportPanel {
     // A panel with no HTML is a blank editor tab that explains nothing; when
     // there is no report yet (tracking disabled, first refresh still running)
     // the page says so instead.
-    if (report) ReportPanel.current.update(report);
-    else panel.webview.html = ReportPanel.current.render(null);
+    ReportPanel.current.update(report);
     return ReportPanel.current;
   }
 
@@ -63,16 +62,20 @@ export class ReportPanel {
     );
   }
 
-  update(report: DiffReport): void {
+  /**
+   * Render a report, or — with `null` — the page that says why there is none.
+   * `note` is that reason; it is part of what decides whether to re-render.
+   */
+  update(report: DiffReport | null, note?: string): void {
     this.report = report;
     // Setting `webview.html` reloads the page: scroll position, focus and any
     // hover state are lost. Skip it when the new report would render the same.
-    const signature = reportSignature(report);
+    const signature = report ? reportSignature(report) : `none:${note ?? ''}`;
     if (signature === this.signature) return;
     this.signature = signature;
-    this.panel.webview.html = this.render(report);
-    const blind = pct(report.blindspot);
-    this.panel.title = report.totalChangedLines === 0 ? 'Blindspot' : `Blindspot ${blind}%`;
+    this.panel.webview.html = this.render(report, note);
+    this.panel.title =
+      !report || report.totalChangedLines === 0 ? 'Blindspot' : `Blindspot ${pct(report.blindspot)}%`;
   }
 
   get lastReport(): DiffReport | null {
@@ -86,7 +89,7 @@ export class ReportPanel {
     this.disposables.length = 0;
   }
 
-  private render(r: DiffReport | null): string {
+  private render(r: DiffReport | null, note?: string): string {
     const nonce = makeNonce();
     const csp = `default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';`;
     return `<!DOCTYPE html>
@@ -98,7 +101,7 @@ export class ReportPanel {
 <style>${STYLES}</style>
 </head>
 <body>
-${r === null ? renderPending() : r.totalChangedLines === 0 ? renderEmpty(r) : renderReport(r)}
+${r === null ? renderPending(note) : r.totalChangedLines === 0 ? renderEmpty(r) : renderReport(r)}
 <script nonce="${nonce}">
 const vscode = acquireVsCodeApi();
 document.addEventListener('click', (e) => {
@@ -121,12 +124,12 @@ document.addEventListener('click', (e) => {
   }
 }
 
-function renderPending(): string {
+function renderPending(note?: string): string {
   return `<div class="wrap">
   <header><h1>BLINDSPOT</h1><button class="ghost" data-action="refresh">refresh</button></header>
   <div class="empty">
     <p>No report yet.</p>
-    <p class="muted">Blindspot is either still computing the first one, or tracking is disabled (<code>blindspot.enabled</code>).</p>
+    <p class="muted">${escapeHtml(note ?? 'Blindspot is still computing the first one.')}</p>
   </div>
 </div>`;
 }

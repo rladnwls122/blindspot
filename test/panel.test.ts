@@ -124,8 +124,15 @@ describe('the report panel', () => {
   });
 
   test('opening the panel before the first report shows a page, not a blank tab', () => {
-    ReportPanel.show(vscodeStub.Uri.file('/ext'), () => {}, null);
+    const panel = ReportPanel.show(vscodeStub.Uri.file('/ext'), () => {}, null);
     assert.match(html, /No report yet/);
+    assert.match(html, /still computing/);
+    // Tracking switched off while the panel is open: the page says so, once.
+    panel.update(null, 'Tracking is disabled <here>.');
+    assert.match(html, /Tracking is disabled &lt;here&gt;\./);
+    const writes = htmlWrites;
+    panel.update(null, 'Tracking is disabled <here>.');
+    assert.equal(htmlWrites, writes);
   });
 
   test('a filename full of HTML is rendered as text, not markup', () => {
