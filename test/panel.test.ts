@@ -11,6 +11,7 @@ import type { DiffReport } from '../src/core/types';
  */
 
 let html = '';
+let htmlWrites = 0;
 
 class MarkdownString {
   constructor(public value: string) {}
@@ -24,6 +25,7 @@ const vscodeStub: any = {
       webview: {
         set html(v: string) {
           html = v;
+          htmlWrites++;
         },
         get html() {
           return html;
@@ -107,7 +109,23 @@ function withoutOwnScript(page: string): string {
 describe('the report panel', () => {
   beforeEach(() => {
     html = '';
+    htmlWrites = 0;
     (ReportPanel as any).current = undefined;
+  });
+
+  test('a refresh that changed nothing does not reload the page', () => {
+    const panel = ReportPanel.show(vscodeStub.Uri.file('/ext'), () => {}, report('src/app.ts'));
+    assert.equal(htmlWrites, 1);
+    // Same diff, same evidence, four seconds later.
+    panel.update({ ...report('src/app.ts'), generatedAt: 4000 });
+    assert.equal(htmlWrites, 1, 'reloading the webview would drop the scroll position');
+    panel.update({ ...report('src/app.ts'), reviewedLines: 5, unseenLines: 5 });
+    assert.equal(htmlWrites, 2, 'a real change still renders');
+  });
+
+  test('opening the panel before the first report shows a page, not a blank tab', () => {
+    ReportPanel.show(vscodeStub.Uri.file('/ext'), () => {}, null);
+    assert.match(html, /No report yet/);
   });
 
   test('a filename full of HTML is rendered as text, not markup', () => {

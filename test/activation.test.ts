@@ -276,12 +276,13 @@ describe('activation inside a git repository', { concurrency: 1 }, () => {
 
     assert.equal(stub.contextKeys.get('blindspot.repo'), true);
     // Both ids are real handlers, and the run-dashboard one reaches the panel
-    // — the stub has no createWebviewPanel, so reaching it is the failure.
+    // — the stub has no createWebviewPanel, so reaching it is the failure. A
+    // command that fails must say so in Blindspot's own words rather than
+    // surface as VS Code's generic "command failed" naming the id.
     assert.equal(stub.commands.has('blindspot.runDashboard'), true);
-    await assert.rejects(
-      () => stub.commands.get('blindspot.runDashboard')!(),
-      /createWebviewPanel is not a function/,
-    );
+    await stub.commands.get('blindspot.runDashboard')!();
+    assert.equal(stub.errors.length, 1);
+    assert.match(stub.errors[0], /^Blindspot: .*createWebviewPanel/);
     assert.equal(stub.warnings.filter((w) => /git repository/i.test(w)).length, 0);
   });
 });

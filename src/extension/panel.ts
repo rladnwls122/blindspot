@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { bar, pct } from '../core/score';
+import { reportSignature } from '../core/signature';
 import type { DiffReport, FileReport, RiskLevel } from '../core/types';
 
 export type PanelMessage =
@@ -20,6 +21,7 @@ export class ReportPanel {
   private readonly panel: vscode.WebviewPanel;
   private readonly disposables: vscode.Disposable[] = [];
   private report: DiffReport | null = null;
+  private signature = '';
 
   static show(
     extensionUri: vscode.Uri,
@@ -39,7 +41,11 @@ export class ReportPanel {
       { enableScripts: true, retainContextWhenHidden: true, localResourceRoots: [extensionUri] },
     );
     ReportPanel.current = new ReportPanel(panel, onMessage);
+    // A panel with no HTML is a blank editor tab that explains nothing; when
+    // there is no report yet (tracking disabled, first refresh still running)
+    // the page says so instead.
     if (report) ReportPanel.current.update(report);
+    else panel.webview.html = ReportPanel.current.render(null);
     return ReportPanel.current;
   }
 
@@ -59,6 +65,11 @@ export class ReportPanel {
 
   update(report: DiffReport): void {
     this.report = report;
+    // Setting `webview.html` reloads the page: scroll position, focus and any
+    // hover state are lost. Skip it when the new report would render the same.
+    const signature = reportSignature(report);
+    if (signature === this.signature) return;
+    this.signature = signature;
     this.panel.webview.html = this.render(report);
     const blind = pct(report.blindspot);
     this.panel.title = report.totalChangedLines === 0 ? 'Blindspot' : `Blindspot ${blind}%`;
@@ -75,7 +86,7 @@ export class ReportPanel {
     this.disposables.length = 0;
   }
 
-  private render(r: DiffReport): string {
+  private render(r: DiffReport | null): string {
     const nonce = makeNonce();
     const csp = `default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';`;
     return `<!DOCTYPE html>
@@ -87,7 +98,7 @@ export class ReportPanel {
 <style>${STYLES}</style>
 </head>
 <body>
-${r.totalChangedLines === 0 ? renderEmpty(r) : renderReport(r)}
+${r === null ? renderPending() : r.totalChangedLines === 0 ? renderEmpty(r) : renderReport(r)}
 <script nonce="${nonce}">
 const vscode = acquireVsCodeApi();
 document.addEventListener('click', (e) => {
@@ -108,6 +119,16 @@ document.addEventListener('click', (e) => {
 </body>
 </html>`;
   }
+}
+
+function renderPending(): string {
+  return `<div class="wrap">
+  <header><h1>BLINDSPOT</h1><button class="ghost" data-action="refresh">refresh</button></header>
+  <div class="empty">
+    <p>No report yet.</p>
+    <p class="muted">Blindspot is either still computing the first one, or tracking is disabled (<code>blindspot.enabled</code>).</p>
+  </div>
+</div>`;
 }
 
 function renderEmpty(r: DiffReport): string {

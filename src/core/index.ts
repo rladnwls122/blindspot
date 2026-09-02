@@ -10,3 +10,4 @@ export * from './score';
 export * from './store';
 export * from './render';
 export * from './tree';
+export * from './signature';

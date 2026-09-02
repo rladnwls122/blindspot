@@ -14,6 +14,29 @@
   that opens the report panel. The same command is linked from the native
   settings page (`Blindspot: Enabled`), and **Refresh** sits next to it.
 
+### Changed
+
+- The report is rebuilt every few seconds, but what it says rarely changes
+  between two rebuilds. Every surface now compares a fingerprint of the report
+  (`reportSignature`, everything but the timestamp) before redrawing: the
+  webview is no longer reloaded — which dropped its scroll position every four
+  seconds — the tree no longer re-queried, and decorations are re-sent to an
+  editor only when its markers or its document changed.
+- The periodic refresh — two git processes plus a report rebuild — is skipped
+  while the window is not focused and nothing is unsaved, since no evidence is
+  collected in that state. Regaining focus refreshes immediately, so a commit
+  made in a terminal shows up as soon as you come back.
+
+### Fixed
+
+- Opening the panel before the first report existed (tracking disabled, or a
+  refresh still running) showed a blank editor tab. It now says why.
+- A file that was deleted or renamed after the report was built made "Review
+  Blindspot" and the file links fail with a generic error. Both now say the
+  file moved and refresh the report instead of failing on it again.
+- A command that throws now reports its own error message, not VS Code's
+  generic "command failed" naming the id.
+
 ## [0.3.1] — 2026-09-01
 
 ### Added

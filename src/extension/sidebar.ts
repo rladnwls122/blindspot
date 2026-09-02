@@ -18,9 +18,16 @@ export class SidebarProvider implements vscode.TreeDataProvider<TreeNode>, vscod
   private readonly changed = new vscode.EventEmitter<TreeNode | undefined>();
   readonly onDidChangeTreeData = this.changed.event;
   private groups: GroupNode[] = [];
+  private signature = '';
 
   update(diff: DiffReport | null, scope: DiffReport | null = null): void {
-    this.groups = buildTree(diff, scope);
+    const groups = buildTree(diff, scope);
+    // Firing the change event makes VS Code re-query every node. The report
+    // is rebuilt every few seconds; the tree usually is not different.
+    const signature = JSON.stringify(groups);
+    if (signature === this.signature) return;
+    this.signature = signature;
+    this.groups = groups;
     this.changed.fire(undefined);
   }
 

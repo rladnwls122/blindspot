@@ -168,6 +168,7 @@ class Controller implements vscode.Disposable {
   private saveTimer: NodeJS.Timeout | undefined;
   private refreshing = false;
   private disposed = false;
+  private windowFocused = vscode.window.state.focused;
   private readonly textCache = new Map<
     string,
     { mtimeMs: number; size: number; lines: string[] }
@@ -209,6 +210,13 @@ class Controller implements vscode.Disposable {
       vscode.window.onDidChangeVisibleTextEditors(() =>
         this.decorations.apply(this.report, this.git.root),
       ),
+      vscode.window.onDidChangeWindowState((s) => {
+        const regained = s.focused && !this.windowFocused;
+        this.windowFocused = s.focused;
+        // Whatever happened in a terminal while we were away shows up now,
+        // not at the next tick.
+        if (regained) void this.refresh();
+      }),
       vscode.languages.registerHoverProvider(
         { scheme: 'file' },
         new EvidenceHover({
@@ -266,7 +274,19 @@ class Controller implements vscode.Disposable {
   private scheduleRefresh(): void {
     const interval = Math.max(1000, this.setting('refreshIntervalMs', 4000));
     if (this.refreshTimer) clearInterval(this.refreshTimer);
-    this.refreshTimer = setInterval(() => void this.refresh(), interval);
+    this.refreshTimer = setInterval(() => void this.tickRefresh(), interval);
+  }
+
+  /**
+   * The periodic refresh. Each one is two git processes plus a rebuild of the
+   * report. While the window is not focused no evidence is being collected, so
+   * unless something is still unsaved there is nothing new to compute — and a
+   * review tool should not be what keeps a laptop fan running in the
+   * background. Regaining focus triggers a refresh straight away.
+   */
+  private tickRefresh(): Promise<DiffReport | null> {
+    if (!this.windowFocused && !this.tracker.isDirty) return Promise.resolve(this.report);
+    return this.refresh();
   }
 
   async refresh(): Promise<DiffReport | null> {
@@ -379,8 +399,22 @@ class Controller implements vscode.Disposable {
   private registerCommands(): void {
     // Fallback handlers own these ids until we replace them.
     disposeFallbackCommands();
+    // A command that throws surfaces as a generic VS Code error naming the
+    // command id. Catch it here so the message says what actually failed.
     const push = (id: string, fn: (...args: any[]) => any) =>
-      this.context.subscriptions.push(vscode.commands.registerCommand(id, fn));
+      this.context.subscriptions.push(
+        vscode.commands.registerCommand(id, async (...args: any[]) => {
+          try {
+            return await fn(...args);
+          } catch (err) {
+            console.error(`[blindspot] ${id} failed`, err);
+            void vscode.window.showErrorMessage(
+              `Blindspot: ${err instanceof Error ? err.message : String(err)}`,
+            );
+            return undefined;
+          }
+        }),
+      );
 
     const showReport = async () => {
       const report = (await this.refresh()) ?? this.report;
@@ -488,7 +522,16 @@ class Controller implements vscode.Disposable {
   /** Open a repo file with the caret parked on a 1-based line, without crediting the jump. */
   private async openAt(file: string, line1: number): Promise<void> {
     const uri = vscode.Uri.file(path.join(this.git.root, file));
-    const doc = await vscode.workspace.openTextDocument(uri);
+    let doc: vscode.TextDocument;
+    try {
+      doc = await vscode.workspace.openTextDocument(uri);
+    } catch {
+      // The report is a few seconds old; the file can have been deleted or
+      // renamed since. Say so, and bring the report up to date.
+      void vscode.window.showWarningMessage(`Blindspot: could not open ${file} — it may have moved.`);
+      await this.refresh();
+      return;
+    }
     const editor = await vscode.window.showTextDocument(doc, vscode.ViewColumn.One);
     const line = Math.min(Math.max(0, line1 - 1), Math.max(0, doc.lineCount - 1));
     this.tracker.suppressCaretCredit();
@@ -507,7 +550,16 @@ class Controller implements vscode.Disposable {
     }
     // Jumping to a blindspot must not be what marks it as read.
     this.tracker.suppressCaretCredit(800);
-    const hunk = await this.navigator.next();
+    let hunk;
+    try {
+      hunk = await this.navigator.next();
+    } catch {
+      // The hunk's file vanished since the report was built. Refresh so the
+      // next jump has a current queue, rather than failing on the same file.
+      await this.refresh();
+      void vscode.window.showWarningMessage('Blindspot: that file has moved — the report was refreshed.');
+      return;
+    }
     if (!hunk) return;
     const severe = hunk.risk === 'critical' || hunk.risk === 'high';
     void vscode.window.setStatusBarMessage(

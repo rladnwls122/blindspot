@@ -12,6 +12,12 @@ export class Decorations implements vscode.Disposable {
   private readonly unreviewed: vscode.TextEditorDecorationType;
   private readonly severe: vscode.TextEditorDecorationType;
   private enabled = true;
+  /**
+   * What each editor was last decorated with. Keyed by the editor object, not
+   * its URI: VS Code hands out a fresh `TextEditor` when a tab is reopened,
+   * and a fresh one has no decorations whatever its predecessor had.
+   */
+  private readonly applied = new WeakMap<vscode.TextEditor, string>();
 
   constructor() {
     this.unreviewed = vscode.window.createTextEditorDecorationType({
@@ -40,6 +46,7 @@ export class Decorations implements vscode.Disposable {
   }
 
   setEnabled(on: boolean): void {
+    if (this.enabled === on) return;
     this.enabled = on;
     if (!on) this.clearAll();
   }
@@ -60,6 +67,16 @@ export class Decorations implements vscode.Disposable {
     if (editor.document.uri.scheme !== 'file') return;
     const rel = path.relative(root, editor.document.uri.fsPath).split(path.sep).join('/');
     const hunks = report.hunks.filter((h) => h.file === rel);
+
+    // `setDecorations` is a round trip to the renderer per call, and the
+    // report is rebuilt every few seconds whether or not anything changed.
+    // The document version is part of the key because the ranges below are
+    // clamped to the current line count.
+    const key =
+      `${editor.document.version}|` +
+      hunks.map((h) => `${h.startLine}-${h.endLine}:${h.risk}:${h.reason}:${h.aiRatio}`).join(',');
+    if (this.applied.get(editor) === key) return;
+    this.applied.set(editor, key);
 
     const plain: vscode.DecorationOptions[] = [];
     const risky: vscode.DecorationOptions[] = [];
@@ -87,6 +104,7 @@ export class Decorations implements vscode.Disposable {
     for (const editor of vscode.window.visibleTextEditors) {
       editor.setDecorations(this.unreviewed, []);
       editor.setDecorations(this.severe, []);
+      this.applied.delete(editor);
     }
   }
 
