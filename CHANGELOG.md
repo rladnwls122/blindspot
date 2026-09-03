@@ -38,6 +38,17 @@
 - `blindspot read` — the CLI counterpart of Reading mode: every file with
   reading evidence, whole. Needs a folder, not a repository. `blindspot report`
   now prints the Read / Focus / Activity / Pace block too.
+- **A commit trailer.** `blindspot install-hook --trailer` also installs a
+  `prepare-commit-msg` hook, and every commit made afterwards carries
+  `Blindspot: 36% (66/182 lines unread)` — the share of its staged diff that
+  was unread when it went in. Evidence lives in `.git` and dies with the clone;
+  the trailer travels with the commit, which makes it the data the validation
+  experiment needs: when a bug is fixed, was the line behind it unread at the
+  time? Opt-in, because unlike the evidence this one number leaves the
+  repository. Merge, squash and amend messages are left alone; a rewritten
+  message gets one trailer, not two; and when the editor is about to open the
+  trailer sits below the subject line the way `git commit -s` places its own.
+  `blindspot check --staged --trailer` prints the line by itself.
 - Mode-aware gutter marks: orange (red where risky) for an unread changed
   line, blue for a line you simply have not got to yet while reading.
 

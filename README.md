@@ -371,12 +371,21 @@ blindspot report                    # 파일별 표 + Read/Focus/Activity/Pace
 blindspot read                      # Reading 모드가 보는 것 — 연 파일 전체. git 불필요
 blindspot check --min-coverage 70   # 70% 미만이면 exit 1 (CI나 엄격한 훅용)
 blindspot check --json              # 기계가 읽는 형식
+blindspot check --staged --trailer  # 커밋 트레일러 한 줄: Blindspot: 36% (66/182 lines unread)
+blindspot install-hook --trailer    # prepare-commit-msg 훅도 설치 — 커밋마다 그 줄을 남김 (옵트인)
 blindspot --version                 # 버전
 ```
 
 설치되는 pre-commit 훅은 기본적으로 **경고하고 exit 0** 합니다. 커밋을 막는
 리뷰 도구는 일주일 안에 제거되고, 참인 사실을 알려 주는 도구는 남습니다.
 강제는 `--min-coverage` / `--max-critical`로 옵트인입니다.
+
+커밋 트레일러도 **옵트인**입니다. 증거는 `.git` 안에 머물고 클론과 함께
+사라지지만, 트레일러는 커밋과 함께 저장소를 떠나는 유일한 숫자이기 때문입니다.
+대신 그 덕분에 나중에 "버그 수정이 고친 줄은 들어올 때 읽히지 않은 줄이었나"를
+물을 수 있습니다 — 이 지표가 의미가 있는지를 가르는 실험의 데이터가 여기서
+나옵니다. merge / squash / amend 메시지는 건드리지 않고, `--no-verify`로도
+꺼지지 않습니다: 그 플래그는 검사를 건너뛰는 것이고, 이건 검사가 아니라 기록입니다.
 
 ## 설정
 

@@ -10,13 +10,14 @@ import {
   renderReading,
   renderScore,
   renderSummaryLine,
+  renderTrailer,
 } from '../core/render';
 import { pct } from '../core/score';
 import type { BlindspotConfig } from '../core/config';
 import type { BlindspotState } from '../core/store';
 import type { DiffReport, FileDiff } from '../core/types';
 import { collectDiff, findGitContext, type GitContext } from '../extension/git';
-import { loadConfig, loadState, installHook } from '../extension/storage';
+import { loadConfig, loadState, installHook, installTrailerHook } from '../extension/storage';
 import { findWorkspace, workspaceFromGit } from '../extension/workspace';
 
 const COMMANDS = ['check', 'report', 'read', 'install-hook', 'help', 'version'];
@@ -27,6 +28,8 @@ interface Args {
   error: string | null;
   staged: boolean;
   json: boolean;
+  /** Print only the `Blindspot:` commit trailer, for prepare-commit-msg. */
+  trailer: boolean;
   enforce: boolean;
   color: boolean;
   quiet: boolean;
@@ -43,6 +46,11 @@ Usage
   blindspot read [options]       reading coverage of every file you have opened here
                                  (what the editor's Reading mode shows; needs no git)
   blindspot install-hook         install the pre-commit hook in this repo
+  blindspot install-hook --trailer
+                                 also install the prepare-commit-msg hook that
+                                 writes a "Blindspot: 36% (66/182 lines unread)"
+                                 trailer on every commit. Opt-in: the number
+                                 leaves the repository with the commit
 
 Options
   --staged                measure the staged tree (what the commit will contain)
@@ -51,6 +59,8 @@ Options
   --max-critical <n>      fail above this many unread critical/high-risk lines
   --enforce               exit 1 when thresholds are not met (default: warn only)
   --json                  machine-readable output
+  --trailer               print only the commit trailer line (nothing when there
+                          is nothing to measure)
   --no-color              disable ANSI colour
   --quiet                 only print when there is something to say
   -v, --version           print the version
@@ -97,8 +107,11 @@ export async function main(argv: string[]): Promise<number> {
   }
 
   if (args.command === 'install-hook') {
-    const { path: hookPath, action } = await installHook(ctx);
-    process.stdout.write(`blindspot: hook ${action} at ${hookPath}\n`);
+    const installed = [await installHook(ctx)];
+    if (args.trailer) installed.push(await installTrailerHook(ctx));
+    for (const { path: hookPath, action } of installed) {
+      process.stdout.write(`blindspot: hook ${action} at ${hookPath}\n`);
+    }
     return 0;
   }
 
@@ -115,6 +128,13 @@ export async function main(argv: string[]): Promise<number> {
 
   if (args.json) {
     process.stdout.write(JSON.stringify(report, null, 2) + '\n');
+    return verdict(report, cfg, args);
+  }
+
+  if (args.trailer) {
+    // One line or nothing: the hook pastes stdout straight into the message.
+    const trailer = renderTrailer(report);
+    if (trailer) process.stdout.write(trailer + '\n');
     return verdict(report, cfg, args);
   }
 
@@ -351,6 +371,7 @@ function parseArgs(argv: string[]): Args {
     error: null,
     staged: false,
     json: false,
+    trailer: false,
     enforce: false,
     color: process.stdout.isTTY === true && !process.env.NO_COLOR,
     quiet: false,
@@ -374,6 +395,9 @@ function parseArgs(argv: string[]): Args {
         break;
       case '--json':
         args.json = true;
+        break;
+      case '--trailer':
+        args.trailer = true;
         break;
       case '--enforce':
         args.enforce = true;
@@ -418,6 +442,14 @@ function parseArgs(argv: string[]): Args {
 
   if (!COMMANDS.includes(args.command)) {
     args.error ??= `unknown command ${args.command}`;
+  }
+  if (args.trailer && args.json) {
+    // Two output formats for one stream: the hook would paste JSON into a
+    // commit message. Refuse rather than pick one.
+    args.error ??= '--trailer and --json cannot be combined';
+  }
+  if (args.trailer && args.command === 'read') {
+    args.error ??= '--trailer applies to check and install-hook';
   }
   return args;
 }

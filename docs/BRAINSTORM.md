@@ -123,6 +123,11 @@ PLAN v0.3 항목. 검증 실험(버그 수정 커밋 → 원인 커밋 → 그 �
 유일한 데이터 소스. `prepare-commit-msg` 훅 + `blindspot check --trailer` 한 줄.
 1번과 함께 가야 값이 있다.
 
+**→ 됨** (`blindspot install-hook --trailer`, CLI 옵트인). 형식은 위 그대로에서
+`interacted-only`를 뺀 `Blindspot: 36% (66/182 lines unread)` — 한 줄에 숫자를
+더 실을수록 파싱하는 쪽이 깨지기 쉽고, interacted 수는 1번의 로그가 생기면 거기서
+나온다. 1번은 아직.
+
 ### 3. 터미널/패널 포커스 (빈틈 4)
 
 안정 API에 "에디터가 텍스트 포커스를 가졌는가"가 없다. 우회 후보:

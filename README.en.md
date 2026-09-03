@@ -315,12 +315,22 @@ blindspot report                    # per-file table plus Read / Focus / Activit
 blindspot read                      # what Reading mode sees: opened files, whole. No git needed
 blindspot check --min-coverage 70   # exit 1 below 70% (for CI or a strict hook)
 blindspot check --json              # machine-readable
+blindspot check --staged --trailer  # the commit trailer line: Blindspot: 36% (66/182 lines unread)
+blindspot install-hook --trailer    # also install prepare-commit-msg, which writes it on every commit (opt-in)
 blindspot --version                 # the version
 ```
 
 The installed pre-commit hook **warns and exits 0** by default. A review tool
 that blocks commits gets uninstalled within a week; one that tells you something
 true gets kept. Enforcement is opt-in via `--min-coverage` / `--max-critical`.
+
+The commit trailer is **opt-in** too. Evidence stays in `.git` and dies with the
+clone; the trailer is the one number that leaves the repository with the commit.
+In return it is the only record that can later answer "was the line behind this
+bug fix unread when it went in?" — the experiment that decides whether this
+metric means anything. Merge, squash and amend messages are left alone, and
+`--no-verify` does not switch it off: that flag skips checks, and this is a
+record, not a check.
 
 ## Configuration
 

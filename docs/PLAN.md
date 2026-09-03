@@ -57,9 +57,12 @@
 3. **AI 영역 선언 자동화.** `.blindspot/ai-regions.json`을 읽는 코드는 이미
    있다. 쓰는 쪽이 없다 — Claude Code / Copilot / Cursor의 편집을 훅으로 잡아
    기록하는 얇은 어댑터가 필요.
-4. **"이 diff의 36%를 안 읽었다"를 커밋 메시지에 남기기.** 선택적 trailer:
-   `Blindspot: 36% (66/182 lines unread)`. 나중에 버그가 났을 때 상관관계를
-   볼 수 있는 유일한 방법이다. → 검증 실험의 데이터 소스
+4. ~~**"이 diff의 36%를 안 읽었다"를 커밋 메시지에 남기기.**~~ 됨 —
+   `blindspot install-hook --trailer`가 `prepare-commit-msg` 훅을 설치하고,
+   커밋마다 `Blindspot: 36% (66/182 lines unread)`를 남긴다. 옵트인. merge /
+   squash / amend는 건드리지 않는다. 나중에 버그가 났을 때 상관관계를 볼 수
+   있는 유일한 방법이다. → 검증 실험의 데이터 소스. 에디터 명령은 아직 없다
+   (CLI만).
 
 ## v0.4 — 팀으로 확장
 

@@ -68,12 +68,16 @@ _Avoid_: since, anchor, checkpoint
 Which target a report measures — diff or reading. The commit-time warning always measures the diff, whatever mode is showing.
 _Avoid_: target setting, view
 
+**Trailer**:
+The one line a commit carries about its own blindspot — `Blindspot: 36% (66/182 lines unread)` — written by the opt-in prepare-commit-msg hook. The only measurement that leaves the repository, and the only one that outlives the clone.
+_Avoid_: footer, annotation, stamp
+
 ### Standing refusals
 
 These are part of the language because they are load-bearing product decisions, not defaults awaiting reconsideration.
 
 **No remote transmission**:
-Attention data is personal data and stays inside the git directory. Nothing is uploaded.
+Attention data is personal data and stays inside the git directory. Nothing is uploaded. The trailer is the one deliberate exception: a single aggregate per commit, never a line, and only when asked for.
 
 **No AI-only tracking**:
 The problem is code nobody read, not code a machine wrote. Authorship is one submetric, never the subject.

@@ -21,8 +21,27 @@ import type { DiffReport } from '../src/core/types';
 const CLI = path.resolve(__dirname, '../src/cli/index.js');
 let repo: string;
 
-function git(args: string[], cwd = repo): string {
-  return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+function git(args: string[], cwd = repo, env: NodeJS.ProcessEnv = process.env): string {
+  return execFileSync('git', args, { cwd, env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+}
+
+/**
+ * The installed hooks look for `blindspot` on PATH. A shim there that runs
+ * this checkout's CLI lets a real `git commit` exercise them end to end.
+ */
+let shimDir: string | null = null;
+function withCliOnPath(): NodeJS.ProcessEnv {
+  if (!shimDir) {
+    shimDir = fs.mkdtempSync(path.join(os.tmpdir(), 'blindspot-bin-'));
+    const posix = (p: string) => p.split(path.sep).join('/');
+    fs.writeFileSync(
+      path.join(shimDir, 'blindspot'),
+      `#!/bin/sh\nexec "${posix(process.execPath)}" "${posix(CLI)}" "$@"\n`,
+      { mode: 0o755 },
+    );
+  }
+  const key = Object.keys(process.env).find((k) => k.toUpperCase() === 'PATH') ?? 'PATH';
+  return { ...process.env, [key]: `${shimDir}${path.delimiter}${process.env[key] ?? ''}`, NO_COLOR: '1' };
 }
 
 function blindspot(args: string[], cwd = repo): { stdout: string; code: number } {
@@ -92,6 +111,7 @@ describe('cli against a real repository', () => {
 
   after(() => {
     if (repo) fs.rmSync(repo, { recursive: true, force: true });
+    if (shimDir) fs.rmSync(shimDir, { recursive: true, force: true });
   });
 
   test('a clean tree has nothing to review', () => {
@@ -285,6 +305,89 @@ describe('cli against a real repository', () => {
     const { stdout } = blindspot(['install-hook']);
     assert.match(stdout, /already installed|hook present/);
   });
+
+  test('--trailer prints the one line a commit message would carry', () => {
+    // src/auth/session.ts is staged, two lines, neither read.
+    const { stdout, code } = blindspot(['check', '--staged', '--trailer']);
+    assert.equal(code, 0);
+    assert.equal(stdout, 'Blindspot: 100% (2/2 lines unread)\n');
+    // Two formats on one stream would paste JSON into a commit message.
+    assert.equal(blindspot(['check', '--trailer', '--json']).code, 2);
+    assert.equal(blindspot(['read', '--trailer']).code, 2);
+  });
+
+  test('install-hook --trailer adds the prepare-commit-msg hook, and only when asked', () => {
+    const hookPath = path.join(repo, '.git', 'hooks', 'prepare-commit-msg');
+    assert.equal(fs.existsSync(hookPath), false, 'a plain install-hook must not write it');
+
+    const { stdout, code } = blindspot(['install-hook', '--trailer']);
+    assert.equal(code, 0);
+    assert.match(stdout, /hook present at .*pre-commit/);
+    assert.match(stdout, /hook created at .*prepare-commit-msg/);
+
+    const contents = fs.readFileSync(hookPath, 'utf8');
+    assert.match(contents, /check --staged --trailer/);
+    assert.match(contents, /merge\|squash\|commit\) return 0/, 'other people\'s messages are left alone');
+    if (process.platform !== 'win32') {
+      assert.equal((fs.statSync(hookPath).mode & 0o111) !== 0, true, 'hook must be executable');
+    }
+
+    const again = blindspot(['install-hook', '--trailer']).stdout;
+    assert.equal(again.match(/hook present/g)?.length, 2, 'both hooks are idempotent');
+  });
+
+  test('a commit made through the hooks carries the trailer', () => {
+    git(['commit', '-q', '-m', 'feat: sign sessions'], repo, withCliOnPath());
+    const body = git(['log', '-1', '--pretty=%B']);
+    assert.match(body, /^feat: sign sessions\n/, 'the subject is untouched');
+    assert.match(body, /^Blindspot: 100% \(2\/2 lines unread\)$/m);
+    // git itself reads it back as a trailer, which is what makes it data.
+    const value = git(['log', '-1', '--format=%(trailers:key=Blindspot,valueonly)']).trim();
+    assert.equal(value, '100% (2/2 lines unread)');
+  });
+
+  test('a commit with nothing to measure gets no trailer', () => {
+    git(['commit', '-q', '--allow-empty', '-m', 'chore: nothing'], repo, withCliOnPath());
+    assert.doesNotMatch(git(['log', '-1', '--pretty=%B']), /Blindspot/);
+  });
+
+  test('a message that already carries a trailer gets it replaced, not doubled', () => {
+    write('src/next.ts', ['export const next = true;']);
+    git(['add', 'src/next.ts']);
+    git(
+      ['commit', '-q', '-m', 'feat: next', '-m', 'Blindspot: 5% (1/20 lines unread)'],
+      repo,
+      withCliOnPath(),
+    );
+    const body = git(['log', '-1', '--pretty=%B']);
+    assert.equal(body.match(/^Blindspot:/gm)?.length, 1);
+    assert.match(body, /^Blindspot: 100% \(1\/1 lines unread\)$/m, 'the measured value wins');
+  });
+
+  test(
+    'with the editor about to open, the trailer leaves the subject line free',
+    { skip: process.platform === 'win32' && 'the editor shim is a shell script' },
+    () => {
+      // `git commit` with no -m: the hook sees an empty message and must not
+      // put the trailer on the line the subject is about to be typed on. The
+      // editor here copies the buffer out and aborts the commit.
+      write('src/editor.ts', ['export const editor = true;']);
+      git(['add', 'src/editor.ts']);
+      const capture = path.join(shimDir as string, 'editor-buffer');
+      const editor = path.join(shimDir as string, 'editor.sh');
+      fs.writeFileSync(editor, `#!/bin/sh\ncp "$1" "${capture}"\nexit 1\n`, { mode: 0o755 });
+      try {
+        git(['commit', '-q'], repo, { ...withCliOnPath(), GIT_EDITOR: editor });
+        assert.fail('the aborting editor should have aborted the commit');
+      } catch (err: any) {
+        assert.equal(err.status, 1);
+      }
+      const buffer = fs.readFileSync(capture, 'utf8');
+      assert.match(buffer, /^\n\nBlindspot: 100% \(1\/1 lines unread\)\n/, 'as git commit -s lays it out');
+      git(['reset', '-q', '--', 'src/editor.ts']);
+      fs.rmSync(path.join(repo, 'src/editor.ts'));
+    },
+  );
 
   test('project config overrides the defaults', () => {
     write('.blindspot/config.json', [

@@ -110,13 +110,78 @@ fi
 `;
 }
 
-export async function installHook(
-  ctx: GitContext,
-  bundledCli?: string,
-): Promise<{ path: string; action: 'created' | 'appended' | 'present' }> {
+/**
+ * The prepare-commit-msg hook. Writes the one-line trailer the staged diff
+ * earned into the message a commit is about to be made with, so the commit
+ * carries `Blindspot: 36% (66/182 lines unread)` for as long as it exists.
+ *
+ * Opt-in (`blindspot install-hook --trailer`): unlike the evidence in `.git`,
+ * this number leaves the repository with the commit. Everything here exits 0
+ * — a trailer is a record, never a gate, and no failure of ours may stop a
+ * commit. It also runs under `--no-verify`, which is right: that flag skips
+ * checks, and this is not one.
+ */
+export function trailerHookScript(bundledCli?: string): string {
+  const posix = bundledCli ? bundledCli.split('\\').join('/') : '';
+  const bundled = posix
+    ? `  elif [ -f "${posix}" ]; then
+    trailer=$(node "${posix}" check --staged --trailer 2>/dev/null)
+`
+    : '';
+  return `#!/bin/sh
+${HOOK_MARKER}
+# Installed by the Blindspot VS Code extension.
+# Records how much of each commit was read as a "Blindspot:" trailer.
+# Remove this block (or the file) to uninstall.
+blindspot_trailer() {
+  # $1 is the message file, $2 where the message came from. A merge or squash
+  # message describes other commits, and an amend already carries the trailer
+  # its own diff earned; all three are left alone.
+  case "$2" in merge|squash|commit) return 0 ;; esac
+  if command -v blindspot >/dev/null 2>&1; then
+    trailer=$(blindspot check --staged --trailer 2>/dev/null)
+  elif [ -f "$(git rev-parse --show-toplevel)/node_modules/.bin/blindspot" ]; then
+    trailer=$("$(git rev-parse --show-toplevel)/node_modules/.bin/blindspot" check --staged --trailer 2>/dev/null)
+${bundled}  else
+    # No CLI, no measurement, no claim.
+    return 0
+  fi
+  [ -n "$trailer" ] || return 0
+  comment=$(git config --get core.commentChar 2>/dev/null) || comment='#'
+  [ -n "$comment" ] && [ "$comment" != auto ] || comment='#'
+  if grep -v "^[$comment]" "$1" | grep -q '[^[:space:]]'; then
+    # There is a message: put the trailer where git puts Signed-off-by, after
+    # the body, replacing an earlier one rather than stacking a second.
+    git interpret-trailers --in-place --if-exists replace --trailer "$trailer" "$1" 2>/dev/null
+  else
+    # Nothing typed yet, the editor is about to open: leave the first two lines
+    # for the subject and the blank after it, the way git commit -s does.
+    { printf '\\n\\n%s\\n' "$trailer"; cat "$1"; } > "$1.blindspot" && mv -f "$1.blindspot" "$1"
+  fi
+  return 0
+}
+blindspot_trailer "$1" "$2"
+# <<< blindspot <<<
+`;
+}
+
+export interface InstalledHook {
+  path: string;
+  action: 'created' | 'appended' | 'present';
+}
+
+export async function installHook(ctx: GitContext, bundledCli?: string): Promise<InstalledHook> {
+  return writeHook(ctx, 'pre-commit', hookScript(bundledCli));
+}
+
+export async function installTrailerHook(ctx: GitContext, bundledCli?: string): Promise<InstalledHook> {
+  return writeHook(ctx, 'prepare-commit-msg', trailerHookScript(bundledCli));
+}
+
+async function writeHook(ctx: GitContext, name: string, script: string): Promise<InstalledHook> {
   const hooksDir = ctx.hooksDir;
   await fs.mkdir(hooksDir, { recursive: true });
-  const hookPath = path.join(hooksDir, 'pre-commit');
+  const hookPath = path.join(hooksDir, name);
 
   let existing: string | null = null;
   try {
@@ -126,13 +191,13 @@ export async function installHook(
   }
 
   if (existing === null) {
-    await fs.writeFile(hookPath, hookScript(bundledCli), { mode: 0o755 });
+    await fs.writeFile(hookPath, script, { mode: 0o755 });
     return { path: hookPath, action: 'created' };
   }
   if (existing.includes(HOOK_MARKER)) {
     return { path: hookPath, action: 'present' };
   }
-  const appended = `${existing.replace(/\s*$/, '')}\n\n${hookScript(bundledCli).replace(/^#!.*\n/, '')}`;
+  const appended = `${existing.replace(/\s*$/, '')}\n\n${script.replace(/^#!.*\n/, '')}`;
   await fs.writeFile(hookPath, appended, { mode: 0o755 });
   return { path: hookPath, action: 'appended' };
 }

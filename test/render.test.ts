@@ -9,6 +9,7 @@ import {
   renderReading,
   renderScore,
   renderSummaryLine,
+  renderTrailer,
   visualWidth,
 } from '../src/core/render';
 import { emptyEvidence, type FileDiff, type LineEvidence } from '../src/core/types';
@@ -161,6 +162,24 @@ describe('renderScore', () => {
     const text = renderScore(r);
     // Nothing in this diff was machine-written.
     assert.match(text, /AI-generated\s+—/);
+  });
+});
+
+describe('renderTrailer', () => {
+  test('is one git-trailer-shaped line', () => {
+    const r = report({
+      'src/app.ts': { lines: ['a', 'b', 'c', 'd'], changed: [1, 2, 3, 4], read: [1, 2, 3] },
+    });
+    assert.equal(renderTrailer(r), 'Blindspot: 25% (1/4 lines unread)');
+  });
+
+  test('a fully read diff still gets one — 0% is a data point', () => {
+    const r = report({ 'src/app.ts': { lines: ['a', 'b'], changed: [1, 2], read: [1, 2] } });
+    assert.equal(renderTrailer(r), 'Blindspot: 0% (0/2 lines unread)');
+  });
+
+  test('nothing to measure means no trailer, not a trailer about nothing', () => {
+    assert.equal(renderTrailer(report({})), null);
   });
 });
 
