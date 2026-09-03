@@ -22,6 +22,12 @@ export class EvidenceHover implements vscode.HoverProvider {
       report(): DiffReport | null;
       evidence(file: string, line: number): LineEvidence | undefined;
       config(): BlindspotConfig;
+      /**
+       * Called on every hover request, before anything is decided. A hover
+       * request means the mouse stopped on this line, and that is attention
+       * evidence whether or not there is anything to explain.
+       */
+      onPointer?(document: vscode.TextDocument, line: number): void;
     },
   ) {}
 
@@ -29,6 +35,7 @@ export class EvidenceHover implements vscode.HoverProvider {
     document: vscode.TextDocument,
     position: vscode.Position,
   ): vscode.Hover | undefined {
+    this.deps.onPointer?.(document, position.line + 1);
     if (!this.deps.enabled()) return undefined;
     const file = this.deps.relativePath(document.uri);
     if (!file) return undefined;

@@ -51,6 +51,8 @@ export function wholeFileTarget(file: string, textLines: string[]): FileDiff {
 export interface ReportOptions {
   mode?: TargetMode;
   activity?: ActivityCounts;
+  /** The base is the commit a completed review ended at, not a plain ref. */
+  sinceReview?: boolean;
 }
 
 export function buildReport(
@@ -83,6 +85,7 @@ export function buildReport(
     const modified = new Set(diff.modifiedLines);
 
     let reviewedLines = 0;
+    let interactedLines = 0;
     let weightedHit = 0;
     let weightedTotal = 0;
     let aiLines = 0;
@@ -113,6 +116,7 @@ export function buildReport(
 
       if (signals.reviewed) {
         reviewedLines += 1;
+        if (signals.interacted) interactedLines += 1;
         weightedHit += weight;
         buckets.coverage[0] += 1;
         if (isSevere(verdict.level)) buckets.critical[0] += 1;
@@ -134,7 +138,9 @@ export function buildReport(
       file: diff.file,
       changedLines,
       reviewedLines,
+      interactedLines,
       unseenLines: changedLines - reviewedLines,
+      deletedLines: diff.deletedLines,
       coverage: changedLines > 0 ? reviewedLines / changedLines : 1,
       weightedCoverage: weightedTotal > 0 ? weightedHit / weightedTotal : 1,
       risk: maxRisk(risks),
@@ -154,6 +160,7 @@ export function buildReport(
 
   return {
     baseRef,
+    sinceReview: opts.sinceReview ?? false,
     mode: opts.mode ?? 'diff',
     generatedAt: now,
     metrics: computeMetrics(
@@ -163,7 +170,9 @@ export function buildReport(
     ),
     totalChangedLines,
     reviewedLines,
+    interactedLines: files.reduce((n, f) => n + f.interactedLines, 0),
     unseenLines: totalChangedLines - reviewedLines,
+    deletedLines: files.reduce((n, f) => n + f.deletedLines, 0),
     coverage,
     blindspot: 1 - coverage,
     score: computeScore(buckets, cfg),
@@ -203,13 +212,29 @@ export function computeMetrics(
   const wsum = w.read + w.focus + w.activity;
   const final = wsum > 0 ? (w.read * read + w.focus * focus + w.activity * activity) / wsum : 0;
   const score = (f: number) => Math.round(f * 1000) / 10;
+  // Focused time is handed out from a budget of `attentionLines` line-seconds
+  // per second, so summing it back up and dividing by the throughput recovers
+  // the seconds of attention the target lines received. It is a floor: time
+  // on context lines outside the target is not in the sum, so the pace it
+  // implies is, if anything, an overestimate — the direction that says
+  // "distrust this" rather than "well done".
+  const attentionMs = Math.round(sums.effectiveMs / Math.max(1, cfg.attentionLines));
+  const linesPerMinute =
+    attentionMs > 0 ? Math.round((sums.reviewedLines / (attentionMs / 60_000)) * 10) / 10 : null;
   return {
     read: { fraction: read, score: score(read), reviewedLines: sums.reviewedLines, targetLines: n },
     focus: { fraction: focus, score: score(focus), effectiveMs: Math.round(sums.effectiveMs) },
     activity: { fraction: activity, score: score(activity), counts },
+    pace: { attentionMs, linesPerMinute },
     final: score(final),
   };
 }
+
+/**
+ * Lines an hour above which review studies see defect detection fall off
+ * (the SmartBear / Cisco figure of 300–500 LOC/h; this is the upper end).
+ */
+export const PACE_CEILING_LINES_PER_MINUTE = 500 / 60;
 
 /**
  * Ranking, worst blindspot first.

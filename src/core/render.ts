@@ -1,3 +1,4 @@
+import { formatDuration, paceIsFast, paceLabel } from './labels';
 import { bar, pct } from './score';
 import type { BlindspotHunk, DiffReport, FileReport, RiskLevel } from './types';
 
@@ -123,6 +124,37 @@ function metric(label: string, value: number, measured: boolean, opts: RenderOpt
       ? paint(text, value >= 0.9 ? ANSI.green : value >= 0.7 ? ANSI.yellow : ANSI.red, true)
       : text;
   return `${padEnd(label, 14)}${padStart(colored, opts.color && measured ? text.length + 9 : 4)}`;
+}
+
+/**
+ * The three measurements, kept apart, and the pace they were made at. The
+ * composite is printed last and named as the derived thing it is.
+ */
+export function renderReading(report: DiffReport, opts: RenderOptions = {}): string {
+  const m = report.metrics;
+  const a = m.activity.counts;
+  const actions = a.jumps + a.navigations + a.edits + a.marks + a.completions;
+  const rows: string[] = [];
+  rows.push(paint('Reading', ANSI.bold, opts.color));
+  rows.push('');
+  rows.push(
+    `${padEnd('Read', 12)}${padStart(String(m.read.score), 5)}   ` +
+      `${m.read.reviewedLines}/${m.read.targetLines} lines, ${report.interactedLines} interacted with`,
+  );
+  rows.push(
+    `${padEnd('Focus', 12)}${padStart(String(m.focus.score), 5)}   ` +
+      `${formatDuration(m.pace.attentionMs)} of attention`,
+  );
+  rows.push(`${padEnd('Activity', 12)}${padStart(String(m.activity.score), 5)}   ${actions} actions`);
+  const pace = paceLabel(m.pace);
+  const fast = paceIsFast(m.pace) ? '  faster than reviewers catch defects at' : '';
+  rows.push(`${padEnd('Pace', 12)}${padStart('', 5)}   ${paint(pace, ANSI.yellow, opts.color && fast !== '')}${fast}`);
+  if (report.deletedLines > 0) {
+    rows.push(`${padEnd('Deleted', 12)}${padStart('', 5)}   ${report.deletedLines} lines removed, not measured`);
+  }
+  rows.push('');
+  rows.push(paint(`Final ${m.final} — weighted composite of the three above`, ANSI.dim, opts.color));
+  return rows.join('\n');
 }
 
 /** The "Review Blindspot" list: what you have not read, worst first. */

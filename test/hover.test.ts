@@ -44,12 +44,15 @@ const FILE = 'src/auth/session.ts';
 function report(): DiffReport {
   return {
     baseRef: 'HEAD',
+    sinceReview: false,
     generatedAt: 0,
     mode: 'diff',
     metrics: computeMetrics({ readSum: 0, focusSum: 0, effectiveMs: 0, reviewedLines: 0, targetLines: 0 }, emptyActivity(), DEFAULT_CONFIG),
     totalChangedLines: 10,
     reviewedLines: 6,
+    interactedLines: 4,
     unseenLines: 4,
+    deletedLines: 0,
     coverage: 0.6,
     blindspot: 0.4,
     score: {
@@ -131,5 +134,23 @@ describe('the unread-line hover', () => {
 
   test('the setting turns it off', () => {
     assert.equal(makeHover({ enabled: false }).provideHover(doc, { line: 9 }), undefined);
+  });
+
+  test('every hover request is reported as the mouse resting on that line, explained or not', () => {
+    // The hover request is the only place the editor lets slip where the
+    // mouse is. It is attention evidence on a reviewed line, on a line outside
+    // any hunk, and with the explanation switched off.
+    const seen: number[] = [];
+    const hover = new EvidenceHover({
+      enabled: () => false,
+      relativePath: () => FILE,
+      report: () => report(),
+      evidence: () => undefined,
+      config: () => DEFAULT_CONFIG,
+      onPointer: (_doc: unknown, line: number) => seen.push(line),
+    });
+    hover.provideHover(doc, { line: 0 });
+    hover.provideHover(doc, { line: 9 });
+    assert.deepEqual(seen, [1, 10], '1-based, like the ledger');
   });
 });

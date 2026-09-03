@@ -27,6 +27,9 @@ interface Stub {
   /** Make one late step of startup blow up, to test the failure path. */
   failHoverRegistration: boolean;
   folderListeners: Array<() => void>;
+  treeViews: Array<{ id: string; provider: any }>;
+  /** Settings written through `getConfiguration().update`. */
+  settings: Record<string, unknown>;
 }
 
 let stub: Stub;
@@ -38,7 +41,12 @@ function makeVscode(): any {
       get workspaceFolders() {
         return stub.folders.length > 0 ? stub.folders : undefined;
       },
-      getConfiguration: () => ({ get: (_k: string, d: unknown) => d, update: async () => {} }),
+      getConfiguration: () => ({
+        get: (k: string, d: unknown) => (k in stub.settings ? stub.settings[k] : d),
+        update: async (k: string, v: unknown) => {
+          stub.settings[k] = v;
+        },
+      }),
       onDidChangeWorkspaceFolders: (fn: () => void) => {
         stub.folderListeners.push(fn);
         return disposable(() => {});
@@ -70,6 +78,12 @@ function makeVscode(): any {
       onDidChangeVisibleTextEditors: () => disposable(() => {}),
       createStatusBarItem: () => ({ show() {}, hide() {}, dispose() {}, text: '', tooltip: '' }),
       createTextEditorDecorationType: () => ({ dispose() {} }),
+      createTreeView: (id: string, options: { treeDataProvider: unknown }) => {
+        stub.treeViews.push({ id, provider: options.treeDataProvider });
+        return { dispose() {}, description: undefined, badge: undefined, message: undefined };
+      },
+      showInputBox: () => Promise.resolve(undefined),
+      setStatusBarMessage: () => disposable(() => {}),
     },
     languages: {
       registerHoverProvider: () => {
@@ -99,6 +113,11 @@ function makeVscode(): any {
     Range: class {},
     Selection: class {},
     ThemeColor: class {},
+    ThemeIcon: class {},
+    TreeItem: class {
+      constructor(public label: string, public collapsibleState: number) {}
+    },
+    TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
     TextEditorRevealType: { InCenter: 2 },
     OverviewRulerLane: { Right: 4 },
     EventEmitter: class {
@@ -156,6 +175,8 @@ describe('activation outside a git repository', { concurrency: 1 }, () => {
       folders: [],
       folderListeners: [],
       failHoverRegistration: false,
+      treeViews: [],
+      settings: {},
     };
   });
   afterEach(teardown);
@@ -191,6 +212,34 @@ describe('activation outside a git repository', { concurrency: 1 }, () => {
     assert.deepEqual(stub.errors, []);
   });
 
+  test('the sidebar is registered under the id package.json contributes', async () => {
+    const dir = tempDir();
+    stub.folders = [{ uri: { fsPath: dir } }];
+    await extension.activate(fakeContext());
+    const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '../../package.json'), 'utf8'));
+    const ids = Object.values(pkg.contributes.views as Record<string, Array<{ id: string }>>)
+      .flat()
+      .map((v) => v.id);
+    assert.deepEqual(stub.treeViews.map((v) => v.id), ids);
+    // The provider answers for the root without a report having been built.
+    const provider = stub.treeViews[0].provider;
+    const roots = provider.getChildren();
+    assert.equal(Array.isArray(roots), true);
+    assert.equal(roots.length > 0, true);
+    for (const node of roots) assert.ok(provider.getTreeItem(node));
+  });
+
+  test('without git, diff mode cannot be chosen and the mode toggle says why', async () => {
+    const dir = tempDir();
+    stub.folders = [{ uri: { fsPath: dir } }];
+    await extension.activate(fakeContext());
+    await stub.commands.get('blindspot.toggleMode')!();
+    assert.equal(stub.settings['mode'], undefined, 'nothing was written');
+    assert.match(stub.warnings.at(-1) ?? '', /git repository/i);
+    await stub.commands.get('blindspot.selectBase')!();
+    assert.match(stub.warnings.at(-1) ?? '', /git repository/i);
+  });
+
   test('with no folder open at all, it says so', async () => {
     await extension.activate(fakeContext());
     await stub.commands.get('blindspot.reviewBlindspot')!();
@@ -207,6 +256,8 @@ describe('activation inside a git repository', { concurrency: 1 }, () => {
       folders: [],
       folderListeners: [],
       failHoverRegistration: false,
+      treeViews: [],
+      settings: {},
     };
   });
   afterEach(teardown);
@@ -223,6 +274,19 @@ describe('activation inside a git repository', { concurrency: 1 }, () => {
     assert.match(stub.errors[0], /could not start/i);
     // And the commands still exist, so the palette explains rather than 404s.
     assert.equal(stub.commands.has('blindspot.showReport'), true);
+  });
+
+  test('toggling the mode writes the workspace setting and flips it back', async () => {
+    const repo = tempDir();
+    execFileSync('git', ['init', '-q'], { cwd: repo });
+    stub.folders = [{ uri: { fsPath: repo } }];
+    await extension.activate(fakeContext());
+
+    await stub.commands.get('blindspot.toggleMode')!();
+    assert.equal(stub.settings['mode'], 'reading', 'auto resolves to diff in a repository, so the toggle reads');
+    await stub.commands.get('blindspot.toggleMode')!();
+    assert.equal(stub.settings['mode'], 'diff');
+    assert.deepEqual(stub.errors, []);
   });
 
   test('a repository in second position in a multi-root workspace is found', async () => {

@@ -1,5 +1,75 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- **Two modes, switchable.** `Diff` measures the lines you changed; `Reading`
+  measures every line of every file you open. The switch sits at the top of
+  the report panel, in `Blindspot: Switch Mode`, and in
+  `Blindspot: Toggle Diff / Reading Mode`; the setting behind it is
+  `blindspot.mode` (`auto` / `diff` / `reading`). What a diff is measured
+  against is a chip in the panel header and `Blindspot: Choose What the Diff
+  Is Measured Against` — the last completed review, `blindspot.baseRef`, or a
+  ref you type — stored as `blindspot.diffSince`. The commit-time warning
+  measures the diff whatever mode the panel is in, so a reading session cannot
+  switch it off by accident.
+- **The mouse as a second focus sensor.** The hover request VS Code makes when
+  the pointer stops over a token is the one place the API says where the mouse
+  is. The tracker now takes whichever of caret and mouse moved more recently as
+  the focus of the attention budget (a scroll invalidates the mouse, since the
+  text under it moved), and a mouse rest counts as the same *navigated* signal
+  a caret placement does. Reading with the mouse while the caret sits at the
+  top of the file used to credit the wrong lines; it no longer does. Stored as
+  `pointerHits`; the hover explanation shows `n× caret, m× mouse`.
+- **Interacted lines.** Of the lines called reviewed, the report counts those
+  the reader also touched (caret, mouse, keystrokes) apart from those that
+  passed on screen time alone. Panel, status bar, sidebar and CLI all show it.
+- **Reading pace.** Attention is a conserved budget, so the focused time
+  credited to the target lines recovers the time spent on them, and lines per
+  minute follows. Past the 300–500 lines/hour at which review studies see
+  defect detection fall off, the panel and CLI flag the pace as `fast`.
+- **Deleted lines are shown.** Still never scored — you cannot fail to read a
+  line that is gone — but each file now says how many lines it removed, and
+  the report carries the total.
+- **A sidebar.** *Blindspot* under Source Control: the headline, then every
+  file with unread code worst first, with the exact ranges beneath. Clicking
+  goes there; the inline check marks a file reviewed. Built from a pure tree
+  model in `src/core/tree.ts`, so its ranking and wording are unit-tested.
+- **The report panel, rebuilt.** A mode-aware headline (a diff leads with what
+  is *unread*, reading with what is *read*), reading metrics with pace, the
+  Review Score in diff mode only, a risk callout, per-file meters with clickable
+  hunk chips, and a collapsible **Tuning** block: drag the point threshold, the
+  read-acknowledgement time or density scaling and the extension rescores the
+  same evidence under the changed definition, badged `preview · not saved`
+  until *Apply to workspace* writes it to `.vscode/settings.json`. Updates are
+  posted into the page and swapped in place instead of reloading it every few
+  seconds, so scroll position and a slider under your hand survive a refresh.
+- `blindspot read` — the CLI counterpart of Reading mode: every file with
+  reading evidence, whole. Needs a folder, not a repository. `blindspot report`
+  now prints the Read / Focus / Activity / Pace block too.
+- Mode-aware gutter marks: orange (red where risky) for an unread changed
+  line, blue for a line you simply have not got to yet while reading.
+
+### Changed
+
+- `blindspot.target` (four values) became `blindspot.mode` (three);
+  `unreviewed` folded into `diff` with `blindspot.diffSince` deciding the base.
+- `Blindspot: Mark Current File As Reviewed` is `Blindspot: Mark File As
+  Reviewed`, and accepts a file from the sidebar; `Toggle Unreviewed
+  Highlighting` is `Toggle Unread Line Markers`.
+
+### Fixed
+
+- The editor was collecting evidence under different focal defaults than the
+  CLI, the tests and the docs: `package.json` still declared
+  `focalSpanLines` 5 / `focalDecayLines` 24 / `peripheralFloor` 0.2 /
+  `idleAfterMs` 60 s, and VS Code hands a declared default back for an unset
+  setting, so the code's 2 / 10 / 0.05 / 30 s never applied inside the editor.
+  The two now agree, and the README's config example says the real numbers.
+- `npm test` runs on Node 22 as well as 20 (and on Windows): the test files
+  are listed by a small runner instead of relying on `node --test <dir>`.
+
 ## [0.3.1] — 2026-09-01
 
 ### Added

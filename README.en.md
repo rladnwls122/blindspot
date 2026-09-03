@@ -91,7 +91,7 @@ weighted, with a threshold:
 | visible | on screen for ≥ 300 ms, scaled by how much the line costs to read | 1 |
 | focused | on screen in the active editor, window focused, ≥ 800 ms | 1 |
 | dwell | the viewport held still for ≥ 1 s while the line was near your focus | 1 |
-| caret | you put the cursor on it or selected it | 1 |
+| caret | you put the cursor on it, selected it, or **your mouse came to rest on it** | 1 |
 | edited | you typed on it | 2 |
 | revisit | you left it and came back to read it again | 1 |
 
@@ -140,8 +140,33 @@ episode — but only earns its point on top of real focused time, or a file left
 open in a background split would earn re-reading credit for being scrolled past
 twice.
 
-[`test/attention.test.ts`](test/attention.test.ts) replays the same session
-through both models and asserts where they disagree.
+**The mouse as a second gaze sensor.** Approximating focus with the caret alone
+misses the most common way code gets read: caret parked at the top, scrolling
+and pointing with the mouse. All the credit lands near the caret and the lines
+actually read stay blindspots. VS Code does not expose the pointer, but it
+calls hover providers when the pointer stops over a token — the one place the
+API lets slip where the mouse is, and mouse-gaze correlation is a long-measured
+fact in HCI. So a hover request does two things: whichever of caret and mouse
+moved *more recently* becomes the focus of the attention budget (a scroll
+invalidates it, since the text under a still mouse has moved), and it counts as
+the same *navigated* signal a caret placement does, reported apart in the hover
+explanation as `1× caret, 2× mouse`. With `editor.hover.enabled` off the sensor
+is simply absent and the caret model is what remains.
+
+**Saying how much to trust the number.** Of the lines called reviewed, the ones
+the reader touched — caret, mouse, keystrokes — are counted apart from the ones
+that passed on screen time alone, and the pace is reported too: attention is a
+conserved budget of `attentionLines` line-seconds per second, so the focused
+time credited to the target lines divided by that throughput recovers roughly
+the time spent. Past the 300–500 lines an hour at which review studies see
+defect detection collapse, the pace is flagged `fast` — meaning distrust the
+coverage next to it. Deleted lines are still never scored, but every file now
+shows its `−12 deleted`, because a quietly removed null check is where the bug
+is.
+
+[`test/attention.test.ts`](test/attention.test.ts) and
+[`test/tracker.test.ts`](test/tracker.test.ts) replay the same sessions through
+both models and assert where they disagree.
 
 ### You have to be able to ask why
 
@@ -149,17 +174,52 @@ A coverage number nobody can interrogate is a number nobody believes. Hovering
 an unread line shows exactly which signals it earned and which it did not:
 
 ```
-blindspot — 4/3 pts
+blindspot — 2/3 pts
 ✓ on screen (5000ms)
 ✓ focused (5000ms)
 · paused (0×)
-· navigated (0×)
+· navigated (0× caret, 0× mouse)
 · edited (0×)
 · re-read (0× returned)
+· read time 5.0s of 2.0s (100%)
 ```
 
 When "but I did read that" collides with the model's verdict, this is where it
 gets settled — and where the model gets corrected. `blindspot.explainOnHover`.
+
+## Two modes: Diff and Reading
+
+One engine, one report; only the target differs. Switch from the toggle at the
+top of the panel, the status bar, or `Blindspot: Switch Mode`.
+
+| | Diff | Reading |
+| --- | --- | --- |
+| target | the lines you changed — since the last completed review, else since `baseRef` (HEAD) | every line of every file you have opened in this folder |
+| headline | **36% unread** — a question still open | **62% read** — progress |
+| gutter | orange, red where risky | blue |
+| Review Score | yes | no — new-code and risk weighting mean nothing for a codebase |
+| needs | git | a folder |
+
+In diff mode the `since …` chip in the header picks the base: the last
+completed review, `baseRef`, or any ref. `Complete Review` moves the baseline
+to HEAD.
+
+**The commit-time warning always measures the diff**, whatever mode the panel
+is in. A reading session silently switching that warning off was the one real
+risk of having a switch at all, so staging computes a diff report of its own.
+
+The sidebar (**Blindspot**, under Source Control) lists files with unread code,
+worst first, with the exact ranges beneath each; clicking one goes there.
+
+### Tuning, previewed
+
+**Tuning** at the bottom of the panel lets you drag the definition of "read" —
+the point threshold, the read-acknowledgement time, density scaling — and see
+what this report would say. The browser fakes nothing: the extension rescores
+the same evidence under the changed settings and sends the result back, wearing
+a `preview · not saved` badge until `Apply to workspace` writes it to
+`.vscode/settings.json`. The team-wide definition in `.blindspot/config.json`
+stays a thing you commit by hand.
 
 ## Percentage alone is useless
 
@@ -219,7 +279,7 @@ To work on it:
 ```bash
 npm install
 npm run build
-npm test           # 169 tests: the model, the CLI, a real git repo, the extension
+npm test           # 219 tests: the model, the CLI, a real git repo, the extension
 npm run demo       # replay a scripted session through the real model
 npm run demo:page  # regenerate demo/index.html — the interactive version
 npm run icon       # regenerate media/icon.png
@@ -238,17 +298,21 @@ numbers in it can never drift from the model.
 | command | what it does |
 | --- | --- |
 | `Blindspot: Show Review Report` | the panel above |
+| `Blindspot: Switch Mode (Diff / Reading)` | what to measure |
+| `Blindspot: Choose What the Diff Is Measured Against` | last review / `baseRef` / any ref |
 | `Blindspot: Review Blindspot` | jump to the next unread hunk, worst risk first |
-| `Blindspot: Mark Current File As Reviewed` | "I read this in the GitHub UI" |
+| `Blindspot: Mark File As Reviewed` | "I read this in the GitHub UI" (also from the sidebar) |
+| `Blindspot: Complete Review` | baseline to HEAD — reviewed up to here |
 | `Blindspot: Install pre-commit Hook` | print the card at commit time |
-| `Blindspot: Toggle Unreviewed Highlighting` | in-editor markers |
+| `Blindspot: Toggle Unread Line Markers` | gutter markers |
 | `Blindspot: Reset Review Evidence` | start over |
 
 ### CLI
 
 ```bash
 blindspot check --staged            # print the card for what you are about to commit
-blindspot report                    # per-file table
+blindspot report                    # per-file table plus Read / Focus / Activity / Pace
+blindspot read                      # what Reading mode sees: opened files, whole. No git needed
 blindspot check --min-coverage 70   # exit 1 below 70% (for CI or a strict hook)
 blindspot check --json              # machine-readable
 blindspot --version                 # the version
@@ -260,9 +324,11 @@ true gets kept. Enforcement is opt-in via `--min-coverage` / `--max-critical`.
 
 ## Configuration
 
-Editor settings live under `blindspot.*`. Project-wide rules — what counts as
-risky in *this* codebase — go in a committed `.blindspot/config.json`, so a team
-shares one definition:
+Editor settings live under `blindspot.*`. `blindspot.mode` (`auto` / `diff` /
+`reading`) and `blindspot.diffSince` (`lastReview` / `baseRef`) are written for
+you by the panel and the commands; the rest are the model's knobs. Project-wide
+rules — what counts as risky in *this* codebase — go in a committed
+`.blindspot/config.json`, so a team shares one definition:
 
 ```json
 {
@@ -270,9 +336,9 @@ shares one definition:
   "minCoverage": 70,
   "maxCriticalBlindspotLines": 0,
   "focalModel": true,
-  "focalSpanLines": 5,
-  "focalDecayLines": 24,
-  "peripheralFloor": 0.2,
+  "focalSpanLines": 2,
+  "focalDecayLines": 10,
+  "peripheralFloor": 0.05,
   "contentScaling": true,
   "revisitGapMs": 20000,
   "pathRules": [
@@ -300,9 +366,11 @@ src/core/        the model — no vscode import, fully unit-tested
   evidence.ts      six signals → points → reviewed
   risk.ts          path + content → risk level
   ledger.ts        line identity across edits and reloads
-  coverage.ts      diff × evidence → report
+  coverage.ts      diff × evidence → report (with interacted lines, pace, deletions)
   score.ts         the composite
-src/extension/   the editor glue (tracker, panel, decorations, git)
+  labels.ts        the words the panel, status bar, sidebar and CLI share
+  tree.ts          the sidebar as data — tested without vscode
+src/extension/   the editor glue (tracker, panel, tree, decorations, git)
 src/cli/         `blindspot` — the hook and CI entry point
 demo/            replay a scripted session through the real model
 ```
@@ -313,8 +381,12 @@ validated.
 
 ## Known limits
 
-- Focus is approximated by the caret. Reading somewhere your cursor is not is
-  the largest remaining error term, and the one an eye tracker would close.
+- Focus is approximated by the caret and the mouse. Reading somewhere neither
+  of them is remains the largest error term, the one an eye tracker would
+  close; and the mouse sensor exists only while `editor.hover` is enabled.
+- With focus in the terminal or a panel, VS Code still reports the last editor
+  as active. That time can accrue to the few lines around the caret until
+  `idleAfterMs` (30 s) runs out.
 - Read cost estimates tokens, not difficulty. Short hard lines are undervalued.
 - Review that happens off screen (the GitHub UI, a pair session) is invisible,
   which is what `Mark Current File As Reviewed` exists for.
@@ -323,10 +395,12 @@ validated.
 
 ## Status
 
-v0.3.1 — the model, the report, the panel, the hover explanation, the CLI and
-the hook all work, and it installs from a `.vsix` and is usable. See [`CHANGELOG.md`](CHANGELOG.md).
-See [`docs/PLAN.md`](docs/PLAN.md) for what is next and
-[`docs/QUESTIONS.md`](docs/QUESTIONS.md) for the decisions still open.
+Unreleased, after v0.3.1 — the two modes, the new panel and sidebar, the mouse
+sensor, interacted lines and pace, and the tuning preview sit on top of `main`.
+See [`CHANGELOG.md`](CHANGELOG.md) for what changed and
+[`docs/BRAINSTORM.md`](docs/BRAINSTORM.md) (Korean) for the reasoning about
+what else to measure and build. See [`docs/PLAN.md`](docs/PLAN.md) for what is
+next and [`docs/QUESTIONS.md`](docs/QUESTIONS.md) for the decisions still open.
 
 ## License
 

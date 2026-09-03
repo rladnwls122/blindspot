@@ -280,7 +280,7 @@ export function scenarioData(cfg: BlindspotConfig = DEFAULT_CONFIG) {
           visible: ev.visibleMs >= cfg.visibleMsForPoint,
           focused: ev.focusedMs >= cfg.focusedMsForPoint,
           dwell: ev.dwellEvents > 0,
-          caret: ev.caretHits > 0,
+          caret: ev.caretHits > 0 || (ev.pointerHits ?? 0) > 0,
           edited: ev.humanEdits > 0,
         },
       };
@@ -296,6 +296,7 @@ const emptyLine = {
   focusedMs: 0,
   dwellEvents: 0,
   caretHits: 0,
+  pointerHits: 0,
   humanEdits: 0,
   provenance: 'unknown' as const,
   lastSeen: null,

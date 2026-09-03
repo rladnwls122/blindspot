@@ -103,7 +103,7 @@ VS Code가 이미 알고 있는 것 — 어떤 줄이 화면에 있었고, 커�
 | visible | 화면에 300ms 이상 (줄의 읽기 비용에 비례해 조정) | 1 |
 | focused | 창이 포커스된 상태에서 활성 에디터에 800ms 이상 | 1 |
 | dwell | 그 줄이 화면에 있는 동안 뷰포트가 1초 이상 멈춤 | 1 |
-| caret | 커서를 올렸거나 선택했음 | 1 |
+| caret | 커서를 올렸거나 선택했거나, **마우스가 그 줄 위에 멈췄음** | 1 |
 | edited | 그 줄에 직접 타이핑했음 | 2 |
 | revisit | 떠났다가 나중에 돌아와 다시 읽었음 | 1 |
 
@@ -177,6 +177,46 @@ readCost('const totals = rows.reduce((a, r) => …);') // 1.4  → 420ms 필요
 단, revisit은 **focused 시간이 있을 때만** 점수가 됩니다. 그렇지 않으면
 백그라운드 split에 열어 둔 파일을 두 번 스크롤한 것이 재독 크레딧이 됩니다.
 
+### 4. 마우스는 두 번째 시선 센서다
+
+초점을 커서로만 근사하면, 커서를 파일 맨 위에 두고 **마우스 휠과 포인터로**
+읽는 가장 흔한 읽기 방식이 통째로 빠집니다. 크레딧은 전부 커서 근처로 가고,
+실제로 읽은 줄은 blindspot으로 남습니다.
+
+VS Code는 마우스 위치를 알려 주지 않지만, 포인터가 토큰 위에 멈추면 hover
+provider를 호출합니다. 그 호출이 "마우스가 이 줄에 있었다"는 유일한 관측이고,
+마우스 위치와 시선의 상관관계는 HCI에서 오래 측정된 사실입니다. 그래서 hover
+요청은 두 가지로 쓰입니다.
+
+- **초점 선택** — 커서와 마우스 중 *더 최근에* 움직인 쪽이 attention budget의
+  초점이 됩니다. 스크롤하면 마우스 아래의 텍스트가 바뀌므로 그 순간 무효화됩니다.
+- **navigated 신호** — 커서를 올린 것과 같은 행위를 다른 센서로 본 것이므로
+  같은 점수를 받습니다. hover 설명에는 `1× caret, 2× mouse`처럼 따로 나옵니다.
+
+`editor.hover.enabled`를 끈 사용자에게는 이 센서가 없고, 그러면 예전처럼
+커서만으로 돌아갑니다. 없다고 틀리지는 않고, 있으면 정확해집니다.
+
+### 5. 숫자를 얼마나 믿어도 되는지 같이 보여준다
+
+같은 "116줄 읽음"이라도 커서·마우스·타이핑이 닿은 줄과 화면 시간만으로 통과한
+줄은 신뢰도가 다릅니다. 그래서 보고서는 reviewed 줄 중 **interacted** 줄 수를
+따로 셉니다. 그리고 읽은 속도도 냅니다.
+
+```
+Read      64    116/182 lines, 71 interacted with
+Focus     41    5m 12s of attention
+Activity  80    19 actions
+Pace            ≈ 22 lines/min   faster than reviewers catch defects at
+```
+
+attention은 초당 `attentionLines`줄어치로 보존되는 예산이므로, 대상 줄에 적립된
+focused 시간을 그 처리량으로 나누면 실제로 쓴 시간이 대략 복원됩니다. 리뷰 연구가
+결함 발견율이 급락한다고 보는 시간당 300–500줄을 넘으면 `fast`로 표시됩니다 —
+그 커버리지 숫자는 믿지 말라는 뜻입니다.
+
+삭제된 줄은 여전히 점수에 들어가지 않지만, 이제 파일마다 `−12 deleted`로
+**보입니다**. 조용히 지워진 null 체크가 버그가 되는 곳이니까요.
+
 ### 이 모델은 껐다 켤 수 있습니다
 
 `focalModel`, `contentScaling`을 끄면 예전의 평평한 뷰포트 모델로 돌아갑니다.
@@ -190,17 +230,49 @@ readCost('const totals = rows.reduce((a, r) => …);') // 1.4  → 420ms 필요
 올리면 그 줄이 실제로 얻은 신호와 못 얻은 신호가 그대로 나옵니다.
 
 ```
-blindspot — 4/3 pts
+blindspot — 2/3 pts
 ✓ on screen (5000ms)
 ✓ focused (5000ms)
 · paused (0×)
-· navigated (0×)
+· navigated (0× caret, 0× mouse)
 · edited (0×)
 · re-read (0× returned)
+· read time 5.0s of 2.0s (100%)
 ```
 
 "나 이거 읽었는데"와 모델의 판단이 갈릴 때, 그 자리에서 어느 쪽이 맞는지
 확인할 수 있어야 모델을 고칠 수도 있습니다. `blindspot.explainOnHover`.
+
+## 두 가지 모드: Diff / Reading
+
+같은 엔진, 같은 보고서, 대상만 다릅니다. 패널 상단의 스위치, 상태 표시줄,
+`Blindspot: Switch Mode`에서 바꿉니다.
+
+| | Diff | Reading |
+| --- | --- | --- |
+| 대상 | 내가 바꾼 줄 — 마지막으로 완료한 리뷰 이후, 없으면 `baseRef`(HEAD) 이후 | 이 폴더에서 연 모든 파일의 모든 줄 |
+| 헤드라인 | **36% unread** — 아직 답하지 않은 질문 | **62% read** — 진척 |
+| 거터 마커 | 주황(위험하면 빨강) | 파랑 |
+| Review Score | 있음 | 없음 (새 코드도 위험도 가중도 의미가 없음) |
+| 필요한 것 | git | 폴더 |
+
+Diff 모드에서 무엇을 기준으로 잴지는 헤더의 `since …` 칩으로 고릅니다 — 마지막
+완료 리뷰, `baseRef`, 또는 아무 ref나. `Complete Review`는 기준을 HEAD로 옮깁니다.
+
+모드가 Reading이어도 **커밋 직전 경고는 항상 diff를 잽니다.** 코드를 읽는 중이었다는
+이유로 커밋 경고가 조용히 꺼지는 것이 이 스위치의 유일한 위험이었고, 그래서
+스테이징 순간에는 diff 보고서를 따로 계산합니다.
+
+사이드바(Source Control 뷰 아래 **Blindspot**)에는 안 읽은 파일이 위험도 순으로,
+그 아래 정확한 줄 범위가 트리로 놓입니다. 클릭하면 그 줄로 갑니다.
+
+### 튜닝을 미리 볼 수 있습니다
+
+패널 맨 아래 **Tuning**을 펼치면 "읽었다"의 정의 — 임계 점수, 읽기 인정 시간, 줄
+밀도 보정 — 를 슬라이더로 바꿔 볼 수 있습니다. 숫자는 브라우저가 흉내내는 게
+아니라 확장이 같은 증거를 바뀐 설정으로 다시 채점해서 돌려주는 것이고, 저장 전에는
+`preview · not saved` 배지가 붙습니다. `Apply to workspace`는 `.vscode/settings.json`에
+씁니다. 팀 전체 정의인 `.blindspot/config.json`은 손으로 커밋할 일입니다.
 
 ## 퍼센트만으로는 아무 의미가 없다
 
@@ -262,7 +334,7 @@ git 저장소가 열려 있으면 바로 상태 표시줄에 커버리지가 뜹
 ```bash
 npm install
 npm run build
-npm test           # 169개 테스트 (모델, CLI, 실제 git 저장소, 그리고 확장 자체)
+npm test           # 219개 테스트 (모델, CLI, 실제 git 저장소, 그리고 확장 자체)
 npm run demo       # 스크립트 세션을 실제 모델로 재생
 npm run demo:page  # demo/index.html 재생성 — 인터랙티브 버전
 npm run icon       # media/icon.png 재생성
@@ -280,17 +352,21 @@ npm run icon       # media/icon.png 재생성
 | 명령 | 하는 일 |
 | --- | --- |
 | `Blindspot: Show Review Report` | 위의 패널 |
+| `Blindspot: Switch Mode (Diff / Reading)` | 무엇을 잴지 |
+| `Blindspot: Choose What the Diff Is Measured Against` | 마지막 리뷰 / `baseRef` / 임의의 ref |
 | `Blindspot: Review Blindspot` | 안 읽은 hunk로 점프, 위험도 높은 순 |
-| `Blindspot: Mark Current File As Reviewed` | "이건 GitHub UI에서 읽었다" |
+| `Blindspot: Mark File As Reviewed` | "이건 GitHub UI에서 읽었다" (사이드바에서도) |
+| `Blindspot: Complete Review` | 기준을 HEAD로 — 여기까지는 봤다 |
 | `Blindspot: Install pre-commit Hook` | 커밋 시점에 카드 출력 |
-| `Blindspot: Toggle Unreviewed Highlighting` | 에디터 내 마커 |
+| `Blindspot: Toggle Unread Line Markers` | 거터 마커 |
 | `Blindspot: Reset Review Evidence` | 처음부터 다시 |
 
 ### CLI
 
 ```bash
 blindspot check --staged            # 지금 커밋하려는 것에 대한 카드 출력
-blindspot report                    # 파일별 표
+blindspot report                    # 파일별 표 + Read/Focus/Activity/Pace
+blindspot read                      # Reading 모드가 보는 것 — 연 파일 전체. git 불필요
 blindspot check --min-coverage 70   # 70% 미만이면 exit 1 (CI나 엄격한 훅용)
 blindspot check --json              # 기계가 읽는 형식
 blindspot --version                 # 버전
@@ -302,9 +378,11 @@ blindspot --version                 # 버전
 
 ## 설정
 
-에디터 설정은 `blindspot.*` 아래에 있습니다. 프로젝트 전체 규칙 — *이* 코드베이스에서
-무엇이 위험한가 — 은 커밋되는 `.blindspot/config.json`에 두어 팀이 하나의 정의를
-공유합니다.
+에디터 설정은 `blindspot.*` 아래에 있습니다. `blindspot.mode`(`auto` / `diff` /
+`reading`)와 `blindspot.diffSince`(`lastReview` / `baseRef`)는 패널과 명령이 대신
+써 주는 값이고, 나머지는 측정 모델의 손잡이입니다. 프로젝트 전체 규칙 — *이*
+코드베이스에서 무엇이 위험한가 — 은 커밋되는 `.blindspot/config.json`에 두어 팀이
+하나의 정의를 공유합니다.
 
 ```json
 {
@@ -312,9 +390,9 @@ blindspot --version                 # 버전
   "minCoverage": 70,
   "maxCriticalBlindspotLines": 0,
   "focalModel": true,
-  "focalSpanLines": 5,
-  "focalDecayLines": 24,
-  "peripheralFloor": 0.2,
+  "focalSpanLines": 2,
+  "focalDecayLines": 10,
+  "peripheralFloor": 0.05,
   "contentScaling": true,
   "revisitGapMs": 20000,
   "pathRules": [
@@ -342,9 +420,11 @@ src/core/        모델 — vscode를 import하지 않음, 전부 유닛 테스�
   evidence.ts      여섯 신호 → 점수 → reviewed
   risk.ts          경로 + 내용 → 위험도
   ledger.ts        편집과 재로드를 가로지르는 줄 정체성
-  coverage.ts      diff × 증거 → 보고서
+  coverage.ts      diff × 증거 → 보고서 (interacted, pace, 삭제 줄 포함)
   score.ts         종합 점수
-src/extension/   에디터 접착부 (tracker, panel, decorations, git)
+  labels.ts        패널·상태바·사이드바·CLI가 같은 말을 쓰게 하는 문구
+  tree.ts          사이드바를 데이터로 — vscode 없이 테스트됨
+src/extension/   에디터 접착부 (tracker, panel, tree, decorations, git)
 src/cli/         `blindspot` — 훅과 CI 진입점
 demo/            스크립트 세션을 실제 모델로 재생
 ```
@@ -354,8 +434,11 @@ demo/            스크립트 세션을 실제 모델로 재생
 
 ## 알려진 한계
 
-- 초점은 커서로 근사합니다. 커서를 두고 다른 곳을 읽는 경우는 잡지 못합니다.
-  이것이 eye tracker 없이 남는 가장 큰 오차원입니다.
+- 초점은 커서와 마우스로 근사합니다. 둘 다 두고 눈만 다른 곳을 읽는 경우는
+  잡지 못합니다. 이것이 eye tracker 없이 남는 가장 큰 오차원이고, 마우스 센서는
+  `editor.hover`가 켜져 있을 때만 있습니다.
+- 터미널이나 패널에 포커스가 있어도 VS Code는 마지막 에디터를 활성으로 보고합니다.
+  그 시간은 `idleAfterMs`(30초)까지 커서 근처 몇 줄에 적립될 수 있습니다.
 - 읽기 비용은 토큰 수 추정이지 이해 난이도가 아닙니다. 짧고 어려운 줄은
   과소평가됩니다.
 - 화면 밖 리뷰(GitHub UI, 종이 출력, 페어 리뷰)는 관측되지 않습니다.
@@ -368,9 +451,11 @@ demo/            스크립트 세션을 실제 모델로 재생
 
 ## 상태
 
-v0.3.1 — 모델, 보고서, 패널, hover 설명, CLI, 훅이 모두 동작하고, `.vsix`로
-설치해 실제로 쓸 수 있습니다. 무엇이 바뀌었는지는 [`CHANGELOG.md`](CHANGELOG.md)에 있습니다.
-다음 계획은 [`docs/PLAN.md`](docs/PLAN.md), 아직 열려 있는 결정은
+v0.3.1 이후 미출시 — 두 모드, 새 패널과 사이드바, 마우스 센서, interacted/pace,
+튜닝 미리보기가 `main` 위에 쌓여 있습니다. 무엇이 바뀌었는지는
+[`CHANGELOG.md`](CHANGELOG.md)에, 무엇을 더 재고 무엇을 더 만들지 따져 본 기록은
+[`docs/BRAINSTORM.md`](docs/BRAINSTORM.md)에 있습니다. 다음 계획은
+[`docs/PLAN.md`](docs/PLAN.md), 아직 열려 있는 결정은
 [`docs/QUESTIONS.md`](docs/QUESTIONS.md)를 보세요.
 
 ## 참고 문헌

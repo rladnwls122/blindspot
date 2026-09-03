@@ -1,23 +1,25 @@
 import { execFileSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { buildReport, type ReportSources } from '../core/coverage';
+import { buildReport, wholeFileTarget, type ReportSources } from '../core/coverage';
 import { LineLedger } from '../core/ledger';
 import {
   renderBlindspots,
   renderCard,
   renderFiles,
+  renderReading,
   renderScore,
   renderSummaryLine,
 } from '../core/render';
 import { pct } from '../core/score';
 import type { BlindspotConfig } from '../core/config';
-import type { DiffReport } from '../core/types';
+import type { BlindspotState } from '../core/store';
+import type { DiffReport, FileDiff } from '../core/types';
 import { collectDiff, findGitContext, type GitContext } from '../extension/git';
 import { loadConfig, loadState, installHook } from '../extension/storage';
-import { workspaceFromGit } from '../extension/workspace';
+import { findWorkspace, workspaceFromGit } from '../extension/workspace';
 
-const COMMANDS = ['check', 'report', 'install-hook', 'help', 'version'];
+const COMMANDS = ['check', 'report', 'read', 'install-hook', 'help', 'version'];
 
 interface Args {
   command: string;
@@ -38,6 +40,8 @@ const HELP = `blindspot — how much of this diff have you actually read?
 Usage
   blindspot check [options]      print the review card; exit non-zero if enforcing
   blindspot report [options]     full per-file report
+  blindspot read [options]       reading coverage of every file you have opened here
+                                 (what the editor's Reading mode shows; needs no git)
   blindspot install-hook         install the pre-commit hook in this repo
 
 Options
@@ -84,6 +88,8 @@ export async function main(argv: string[]): Promise<number> {
     return 0;
   }
 
+  if (args.command === 'read') return readCommand(args);
+
   const ctx = await findGitContext(process.cwd());
   if (!ctx) {
     process.stderr.write('blindspot: not a git repository\n');
@@ -127,6 +133,8 @@ export async function main(argv: string[]): Promise<number> {
   out.push(renderScore(report, { color: args.color }));
 
   if (args.command === 'report') {
+    out.push('');
+    out.push(renderReading(report, { color: args.color }));
     out.push('');
     out.push(renderFiles(report, { color: args.color }));
   }
@@ -196,6 +204,80 @@ async function produceReport(
   };
 
   return buildReport(diffs, sources, cfg, args.staged ? 'index' : args.baseRef);
+}
+
+/**
+ * `blindspot read`: every file with persisted reading evidence, whole, which
+ * is what the editor's Reading mode measures. It needs a folder, not a
+ * repository, so the workspace is resolved the way the extension resolves it
+ * and the state is read from wherever that put it.
+ */
+async function readCommand(args: Args): Promise<number> {
+  const ws = await findWorkspace(process.cwd());
+  const cfg = await loadConfig(ws);
+  const state = await loadState(ws);
+  const report = readingReport(ws.root, state, cfg);
+
+  if (args.json) {
+    process.stdout.write(JSON.stringify(report, null, 2) + '\n');
+    return 0;
+  }
+  if (report.totalChangedLines === 0) {
+    if (!args.quiet) {
+      process.stdout.write(
+        'blindspot: no reading recorded here yet — open files in the editor with Reading mode on\n',
+      );
+    }
+    return 0;
+  }
+  const out: string[] = [];
+  out.push(renderReading(report, { color: args.color }));
+  out.push('');
+  out.push(renderFiles(report, { color: args.color }));
+  if (report.unseenLines > 0) {
+    out.push('');
+    out.push('Unread:');
+    out.push(renderBlindspots(report, 30, { color: args.color }));
+  }
+  process.stdout.write(out.join('\n') + '\n');
+  return 0;
+}
+
+export function readingReport(root: string, state: BlindspotState, cfg: BlindspotConfig): DiffReport {
+  const textCache = new Map<string, string[] | undefined>();
+  const getText = (file: string): string[] | undefined => {
+    if (textCache.has(file)) return textCache.get(file);
+    let lines: string[] | undefined;
+    try {
+      const abs = path.join(root, file);
+      if (fs.statSync(abs).size <= 2 * 1024 * 1024) lines = fs.readFileSync(abs, 'utf8').split('\n');
+    } catch {
+      lines = undefined;
+    }
+    textCache.set(file, lines);
+    return lines;
+  };
+  const targets: FileDiff[] = [];
+  for (const file of Object.keys(state.files).sort()) {
+    const text = getText(file);
+    if (text) targets.push(wholeFileTarget(file, text));
+  }
+  const ledgers = new Map<string, LineLedger>();
+  const sources: ReportSources = {
+    getText,
+    getEvidence: (file, line) => {
+      let ledger = ledgers.get(file);
+      if (!ledger) {
+        ledger = LineLedger.anchor(state.files[file] ?? [], getText(file) ?? []);
+        ledgers.set(file, ledger);
+      }
+      return ledger.peek(line);
+    },
+  };
+  return buildReport(targets, sources, cfg, 'workspace', Date.now(), {
+    mode: 'reading',
+    activity: state.activity,
+  });
 }
 
 /** Synchronous `git show :file`, so the report builder stays simple. */

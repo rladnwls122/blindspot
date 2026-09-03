@@ -125,6 +125,15 @@ export class LineLedger {
     }
   }
 
+  /** The mouse came to rest on a line. */
+  addPointer(line: number, now: number): void {
+    this.grow(line);
+    const ev = this.lines[line - 1];
+    if (!ev) return;
+    ev.pointerHits = (ev.pointerHits ?? 0) + 1;
+    ev.lastSeen = now;
+  }
+
   setProvenance(startLine: number, endLine: number, p: Provenance): void {
     this.grow(endLine);
     for (let l = startLine; l <= endLine; l++) {
@@ -170,6 +179,7 @@ export class LineLedger {
       focusedMs: 0,
       dwellEvents: 0,
       caretHits: head.caretHits,
+      pointerHits: head.pointerHits ?? 0,
       humanEdits: head.humanEdits + (opts.human ? 1 : 0),
       revisits: 0,
       provenance: opts.human
@@ -288,6 +298,7 @@ export function hasEvidence(ev: LineEvidence | undefined): boolean {
     ev.focusedMs > 0 ||
     ev.dwellEvents > 0 ||
     ev.caretHits > 0 ||
+    (ev.pointerHits ?? 0) > 0 ||
     ev.humanEdits > 0 ||
     (ev.revisits ?? 0) > 0 ||
     ev.provenance !== 'unknown'

@@ -24,7 +24,10 @@ export function evaluate(
   const visible = ev.visibleMs >= cfg.visibleMsForPoint * cost;
   const focused = ev.focusedMs >= cfg.focusedMsForPoint * cost;
   const dwell = ev.dwellEvents > 0;
-  const caret = ev.caretHits > 0;
+  // "Navigated to": the caret was put on the line, or the mouse came to rest
+  // on it. Two sensors for one act — the second one is what catches reading
+  // done with the mouse while the caret sits somewhere else entirely.
+  const caret = ev.caretHits > 0 || (ev.pointerHits ?? 0) > 0;
   const edited = ev.humanEdits > 0;
   // A revisit only counts on top of real focused time. Otherwise a file left
   // open in a background split would earn re-reading credit for being scrolled
@@ -53,6 +56,7 @@ export function evaluate(
     confidence: max > 0 ? Math.min(1, points / max) : 0,
     readFraction: read,
     focusFraction: focusFraction(ev, cfg, lineText),
+    interacted: caret || edited,
     // The signals say *how* a line was read; the time says *whether* it was.
     // Writing a line by hand is the one signal that vouches on its own.
     reviewed: points >= cfg.reviewThresholdPoints && (edited || read >= 1),
@@ -88,7 +92,9 @@ export function explain(ev: LineEvidence, cfg: BlindspotConfig, lineText?: strin
   parts.push(`${s.visible ? '✓' : '·'} on screen (${Math.round(ev.visibleMs)}ms)`);
   parts.push(`${s.focused ? '✓' : '·'} focused (${Math.round(ev.focusedMs)}ms)`);
   parts.push(`${s.dwell ? '✓' : '·'} paused (${ev.dwellEvents}×)`);
-  parts.push(`${s.caret ? '✓' : '·'} navigated (${ev.caretHits}×)`);
+  parts.push(
+    `${s.caret ? '✓' : '·'} navigated (${ev.caretHits}× caret, ${ev.pointerHits ?? 0}× mouse)`,
+  );
   parts.push(`${s.edited ? '✓' : '·'} edited (${ev.humanEdits}×)`);
   parts.push(`${s.revisit ? '✓' : '·'} re-read (${ev.revisits ?? 0}× returned)`);
   const cost = lineText === undefined ? 1 : readCost(lineText, cfg);
@@ -111,6 +117,7 @@ export function mergeEvidence(a: LineEvidence, b: LineEvidence): LineEvidence {
     focusedMs: a.focusedMs + b.focusedMs,
     dwellEvents: a.dwellEvents + b.dwellEvents,
     caretHits: a.caretHits + b.caretHits,
+    pointerHits: (a.pointerHits ?? 0) + (b.pointerHits ?? 0),
     humanEdits: a.humanEdits + b.humanEdits,
     revisits: (a.revisits ?? 0) + (b.revisits ?? 0),
     provenance: strongerProvenance(a.provenance, b.provenance),

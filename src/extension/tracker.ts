@@ -5,7 +5,7 @@ import { LineLedger, hasEvidence, type StoredLine } from '../core/ledger';
 import { isIgnored } from '../core/coverage';
 import { attentionNorm, focusLine } from '../core/attention';
 import { emptyActivity, type ActivityCounts, type LineEvidence, type Provenance } from '../core/types';
-import type { AiRegions, BlindspotState } from '../core/store';
+import { STATE_VERSION, type AiRegions, type BlindspotState } from '../core/store';
 
 const TICK_MS = 250;
 /**
@@ -15,6 +15,8 @@ const TICK_MS = 250;
  * lie to you.
  */
 const MAX_TICK_MS = 2000;
+/** Two hover requests on one line inside this window are one rest, not two. */
+const POINTER_DEBOUNCE_MS = 750;
 
 interface ViewState {
   signature: string;
@@ -43,9 +45,19 @@ export class AttentionTracker implements vscode.Disposable {
   private dirty = false;
   private trackedMs = 0;
   private activity: ActivityCounts = emptyActivity();
-  /** Last caret move, scroll or edit. Screen time past `idleAfterMs` from here is idling. */
+  /** Last caret move, scroll, hover or edit. Screen time past `idleAfterMs` from here is idling. */
   private lastActivity = Date.now();
   private baseline: BlindspotState['baseline'] = null;
+  /**
+   * Where the mouse last came to rest, from the editor's hover requests. The
+   * caret is where the last keyboard act happened; the pointer is where the
+   * last mouse act happened; whichever is more recent is the better guess at
+   * where the eyes are. A scroll invalidates it: the lines under a still
+   * mouse have moved, and nothing says which line it is on now.
+   */
+  private pointer: { key: string; line: number; at: number } | null = null;
+  /** When the caret last moved in each document, to compare against the pointer. */
+  private readonly caretMovedAt = new Map<string, number>();
 
   constructor(
     private readonly ctx: { root: string },
@@ -165,6 +177,8 @@ export class AttentionTracker implements vscode.Disposable {
       if (prev && prev.signature !== signature) {
         this.lastActivity = now;
         idle = false;
+        // The text moved under the mouse; its last known line is stale.
+        if (this.pointer?.key === this.viewKey(editor.document)) this.pointer = null;
       }
       const view: ViewState =
         prev && prev.signature === signature
@@ -182,13 +196,13 @@ export class AttentionTracker implements vscode.Disposable {
 
       const isActive = active?.document === editor.document && active.viewColumn === editor.viewColumn;
       // Where attention plausibly sits inside this viewport. Without an eye
-      // tracker the caret is the only thing the editor knows about it, so a
-      // tick is shaped around the caret rather than handed out flat.
-      const focusAt = focusLine(
-        editor.selection.active.line + 1,
-        ranges[0].start.line + 1,
-        ranges[ranges.length - 1].end.line + 1,
-      );
+      // tracker the editor knows two things about it: where the caret is and
+      // where the mouse last stopped. The more recent act wins, so reading
+      // with the mouse while the caret sits at the top of the file credits
+      // the lines under the mouse, not the ones under the caret.
+      const first = ranges[0].start.line + 1;
+      const last = ranges[ranges.length - 1].end.line + 1;
+      const focusAt = focusLine(this.focusCandidate(editor, now), first, last);
       const focus = {
         line: focusAt,
         norm: attentionNorm(
@@ -223,6 +237,7 @@ export class AttentionTracker implements vscode.Disposable {
     const ledger = this.ledgerFor(e.textEditor.document, file);
     const now = Date.now();
     this.lastActivity = now;
+    this.caretMovedAt.set(this.viewKey(e.textEditor.document), now);
     this.activity.navigations += 1;
     for (const sel of e.selections) {
       ledger.addCaret(sel.start.line + 1, sel.end.line + 1, now);
@@ -259,6 +274,44 @@ export class AttentionTracker implements vscode.Disposable {
     if (!undoRedo && changes.some((c) => c.text.length < this.cfg.bulkInsertChars)) {
       this.activity.edits += 1;
     }
+    this.markDirty();
+  }
+
+  /**
+   * The line the reader's attention most plausibly sits on: the mouse if it
+   * came to rest more recently than the caret moved and is still on screen,
+   * otherwise the caret. `focusLine` handles the caret being scrolled away.
+   */
+  private focusCandidate(editor: vscode.TextEditor, now: number): number {
+    const caretLine = editor.selection.active.line + 1;
+    const p = this.pointer;
+    if (!p || p.key !== this.viewKey(editor.document)) return caretLine;
+    if (now - p.at > this.cfg.idleAfterMs) return caretLine;
+    if (p.at < (this.caretMovedAt.get(p.key) ?? 0)) return caretLine;
+    const onScreen = editor.visibleRanges.some(
+      (r) => p.line >= r.start.line + 1 && p.line <= r.end.line + 1,
+    );
+    return onScreen ? p.line : caretLine;
+  }
+
+  /**
+   * The mouse stopped over a line. VS Code reports it by asking hover
+   * providers for content, which is the only place the API lets slip where
+   * the pointer is. Counted as a navigation hit on the line, and adopted as
+   * the focus of the attention budget while it is the most recent act.
+   */
+  notePointer(doc: vscode.TextDocument, line: number): void {
+    if (!this.windowFocused) return;
+    const file = this.key(doc);
+    if (!file) return;
+    const now = Date.now();
+    const key = this.viewKey(doc);
+    const prev = this.pointer;
+    this.pointer = { key, line, at: now };
+    this.lastActivity = now;
+    if (prev && prev.key === key && prev.line === line && now - prev.at < POINTER_DEBOUNCE_MS) return;
+    this.ledgerFor(doc, file).addPointer(line, now);
+    this.activity.navigations += 1;
     this.markDirty();
   }
 
@@ -363,7 +416,7 @@ export class AttentionTracker implements vscode.Disposable {
       if (serialized.length > 0) files[file] = serialized;
     }
     return {
-      version: 1,
+      version: STATE_VERSION,
       updatedAt: Date.now(),
       files,
       trackedMs: this.trackedMs,
