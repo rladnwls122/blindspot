@@ -273,7 +273,7 @@ npm run icon       # media/icon.png 재생성
 [`demo/index.html`](demo/index.html)은 같은 보고서에 임계값 슬라이더를 붙인
 것입니다. 슬라이더를 움직이면 커버리지, 파일 랭킹, Review Score가 전부
 확장이 기록하는 것과 동일한 per-line 신호에서 다시 계산됩니다.
-`demo/page.template.html`에서 생성되므로 그 안의 숫자가 모델과 어긋날 수 없습니다.
+`media/page.html`에서 생성되므로 그 안의 숫자가 모델과 어긋날 수 없습니다.
 
 ### 명령
 

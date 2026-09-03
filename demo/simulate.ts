@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { DEFAULT_CONFIG, type BlindspotConfig } from '../src/core/config';
-import { buildReport, type ReportSources } from '../src/core/coverage';
+import { buildReport, pageData, type PageData, type ReportSources } from '../src/core/coverage';
 import { LineLedger } from '../src/core/ledger';
 import {
   renderBlindspots,
@@ -11,7 +11,6 @@ import {
 } from '../src/core/render';
 import { bar, pct } from '../src/core/score';
 import type { DiffReport, FileDiff } from '../src/core/types';
-import { classifyLine } from '../src/core/risk';
 import { SCENARIO, type Action, type ScenarioFile } from './scenario';
 
 /**
@@ -90,10 +89,8 @@ function replay(file: ScenarioFile): LineLedger {
   return ledger;
 }
 
-export function runScenario(
-  scenario: ScenarioFile[] = SCENARIO,
-  cfg: BlindspotConfig = DEFAULT_CONFIG,
-): DiffReport {
+/** The scenario as report inputs: every line of every file, and its replayed evidence. */
+function scenarioInputs(scenario: ScenarioFile[]): { diffs: FileDiff[]; sources: ReportSources } {
   const ledgers = new Map<string, LineLedger>();
   const texts = new Map<string, string[]>();
   const diffs: FileDiff[] = [];
@@ -114,7 +111,14 @@ export function runScenario(
     getText: (file) => texts.get(file),
     getEvidence: (file, line) => ledgers.get(file)?.peek(line),
   };
+  return { diffs, sources };
+}
 
+export function runScenario(
+  scenario: ScenarioFile[] = SCENARIO,
+  cfg: BlindspotConfig = DEFAULT_CONFIG,
+): DiffReport {
+  const { diffs, sources } = scenarioInputs(scenario);
   return buildReport(diffs, sources, cfg, 'HEAD', NOW);
 }
 
@@ -257,49 +261,14 @@ function escapeHtml(s: string): string {
 // ----------------------------------------------------------------- raw data
 
 /**
- * Per-line signals for the whole scenario.
- *
- * This is the evidence, not the verdict, which is the point: anything that
- * consumes it can apply a different threshold and see what the same session
- * would have scored. The interactive demo uses it to let you move the
- * threshold and watch the report change.
+ * Per-line signals for the whole scenario, in the shape the interactive page
+ * takes — the same `pageData` the extension feeds its panel, so the demo and
+ * the editor judge a line by one rule.
  */
-export function scenarioData(cfg: BlindspotConfig = DEFAULT_CONFIG) {
-  const files = SCENARIO.map((file) => {
-    const ledger = replay(file);
-    const lines = file.lines.map((text, i) => {
-      const ev = ledger.peek(i + 1) ?? { ...emptyLine };
-      const risk = classifyLine(file.path, text, cfg);
-      return {
-        n: i + 1,
-        text,
-        risk: risk.level,
-        reason: risk.reason,
-        ai: ev.provenance === 'bulk' || ev.provenance === 'declared-ai',
-        signals: {
-          visible: ev.visibleMs >= cfg.visibleMsForPoint,
-          focused: ev.focusedMs >= cfg.focusedMsForPoint,
-          dwell: ev.dwellEvents > 0,
-          caret: ev.caretHits > 0,
-          edited: ev.humanEdits > 0,
-        },
-      };
-    });
-    return { path: file.path, lines };
-  });
-
-  return { weights: cfg.weights, threshold: cfg.reviewThresholdPoints, riskWeights: cfg.riskWeights, files };
+export function scenarioData(cfg: BlindspotConfig = DEFAULT_CONFIG): PageData {
+  const { diffs, sources } = scenarioInputs(SCENARIO);
+  return pageData(diffs, sources, cfg);
 }
-
-const emptyLine = {
-  visibleMs: 0,
-  focusedMs: 0,
-  dwellEvents: 0,
-  caretHits: 0,
-  humanEdits: 0,
-  provenance: 'unknown' as const,
-  lastSeen: null,
-};
 
 // --------------------------------------------------------------------- main
 
@@ -333,7 +302,7 @@ function main(argv: string[]): void {
   const pageIndex = argv.indexOf('--page');
   if (pageIndex >= 0) {
     const target = argv[pageIndex + 1] ?? 'demo/index.html';
-    const templatePath = path.resolve(__dirname, '../../demo/page.template.html');
+    const templatePath = path.resolve(__dirname, '../../media/page.html');
     const template = fs.readFileSync(templatePath, 'utf8');
     if (!template.includes('__DATA__')) {
       throw new Error(`${templatePath} has no __DATA__ placeholder`);

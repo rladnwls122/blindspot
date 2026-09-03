@@ -1,5 +1,25 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+
+- `Blindspot: Show Review Report` now opens the interactive page that used to
+  be the demo (`demo/index.html`), fed the evidence of your own session: the
+  threshold slider re-judges every line of the current target in the browser,
+  from the same per-line signals the status bar and the git hook judge it by.
+  Later reports are posted into the page, so the slider and scroll position
+  survive the refresh that runs every few seconds. The page's file list opens a
+  file at its first unread line; its card button jumps to the next unread hunk.
+  The panel's `mark read` and `Complete review` buttons are gone; both remain
+  as palette commands.
+- The page's verdict follows the model exactly: a line needs enough signals
+  *and* either a human edit or enough focused time. The demo used to accept the
+  signals alone, which is why it reported 64% for a session the extension
+  scores at 55%.
+- The page template moved from `demo/page.template.html` to `media/page.html`
+  so that it ships in the `.vsix`.
+
 ## [0.3.1] — 2026-09-01
 
 ### Added

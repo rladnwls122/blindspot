@@ -1,22 +1,23 @@
 import { test, describe, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import Module from 'node:module';
+import * as path from 'node:path';
 import { emptyActivity, type DiffReport } from '../src/core/types';
-import { computeMetrics } from '../src/core/coverage';
+import { computeMetrics, type PageData } from '../src/core/coverage';
 import { DEFAULT_CONFIG } from '../src/core/config';
 
 /**
- * The report panel is a webview with `enableScripts: true`, and much of what it
- * renders is not ours: file paths come out of `git diff`, and a repository can
- * contain a file named anything a filesystem allows. Escaping is audited by
- * eye today; this makes a future unescaped interpolation fail loudly instead.
+ * The report panel is a webview with `enableScripts: true`, and what it shows
+ * is not ours: file paths come out of `git diff`, line text out of the working
+ * tree, and either can contain anything a filesystem or an editor allows. The
+ * page renders that data itself, so the one place the extension can get it
+ * wrong is the JSON it embeds — a `</script>` inside it would end our script
+ * and start the attacker's.
  */
 
 let html = '';
-
-class MarkdownString {
-  constructor(public value: string) {}
-}
+let title = '';
+const posted: unknown[] = [];
 
 const disposable = { dispose() {} };
 const vscodeStub: any = {
@@ -31,9 +32,17 @@ const vscodeStub: any = {
           return html;
         },
         onDidReceiveMessage: () => disposable,
-        postMessage: () => Promise.resolve(true),
+        postMessage: (m: unknown) => {
+          posted.push(m);
+          return Promise.resolve(true);
+        },
       },
-      title: '',
+      set title(v: string) {
+        title = v;
+      },
+      get title() {
+        return title;
+      },
       reveal: () => {},
       onDidDispose: () => disposable,
       dispose: () => {},
@@ -41,7 +50,6 @@ const vscodeStub: any = {
   },
   ViewColumn: { One: 1 },
   Uri: { file: (p: string) => ({ fsPath: p }) },
-  MarkdownString,
 };
 
 const load = (Module as any)._load;
@@ -53,37 +61,42 @@ const load = (Module as any)._load;
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { ReportPanel } = require('../src/extension/panel');
 
-const HOSTILE = `src/<script>alert('xss')</script>&".ts`;
+/** The repository root, where media/page.html lives. */
+const EXT = vscodeStub.Uri.file(path.resolve(__dirname, '..', '..'));
+const HOSTILE = `src/</script><script>alert('xss')</script>.ts`;
+const HOSTILE_LINE = `</script><img src=x onerror="alert(1)">`;
 
-function report(file = HOSTILE): DiffReport {
-  const fileReport = {
-    file,
-    changedLines: 10,
-    reviewedLines: 4,
-    unseenLines: 6,
-    coverage: 0.4,
-    weightedCoverage: 0.4,
-    risk: 'critical' as const,
-    blindspotRisk: 'critical' as const,
-    aiLines: 0,
-    aiReviewedLines: 0,
-    hunks: [
+function view(file = HOSTILE) {
+  const data: PageData = {
+    weights: DEFAULT_CONFIG.weights,
+    threshold: DEFAULT_CONFIG.reviewThresholdPoints,
+    riskWeights: DEFAULT_CONFIG.riskWeights,
+    files: [
       {
-        file,
-        startLine: 1,
-        endLine: 6,
-        lineCount: 6,
-        risk: 'critical' as const,
-        reason: `<img src=x onerror="alert(1)">`,
-        aiRatio: 0,
+        path: file,
+        lines: [
+          {
+            n: 1,
+            text: HOSTILE_LINE,
+            risk: 'critical',
+            reason: 'authentication / session code',
+            ai: false,
+            read: 0,
+            signals: { visible: false, focused: false, dwell: false, caret: false, edited: false, revisit: false },
+          },
+        ],
       },
     ],
   };
-  return {
-    baseRef: `HEAD<script>`,
+  const report: DiffReport = {
+    baseRef: 'HEAD',
     generatedAt: 0,
     mode: 'diff',
-    metrics: computeMetrics({ readSum: 0, focusSum: 0, effectiveMs: 0, reviewedLines: 0, targetLines: 0 }, emptyActivity(), DEFAULT_CONFIG),
+    metrics: computeMetrics(
+      { readSum: 0, focusSum: 0, effectiveMs: 0, reviewedLines: 4, targetLines: 10 },
+      emptyActivity(),
+      DEFAULT_CONFIG,
+    ),
     totalChangedLines: 10,
     reviewedLines: 4,
     unseenLines: 6,
@@ -97,48 +110,59 @@ function report(file = HOSTILE): DiffReport {
       score: 22,
       measured: { coverage: true, critical: true, newCode: true, ai: false },
     },
-    files: [fileReport],
-    hunks: fileReport.hunks,
-    worstFile: fileReport,
+    files: [],
+    hunks: [],
+    worstFile: null,
   };
-}
-
-/** Everything between the page's own <script nonce=...> tags, which is ours. */
-function withoutOwnScript(page: string): string {
-  return page.replace(/<script nonce="[^"]*">[\s\S]*?<\/script>/g, '');
+  return { report, data };
 }
 
 describe('the report panel', () => {
   beforeEach(() => {
     html = '';
+    title = '';
+    posted.length = 0;
     (ReportPanel as any).current = undefined;
   });
 
-  test('a filename full of HTML is rendered as text, not markup', () => {
-    ReportPanel.show(vscodeStub.Uri.file('/ext'), () => {}, report());
-    const body = withoutOwnScript(html);
-
+  test('hostile file names and line text cannot end the page script', () => {
+    ReportPanel.show(EXT, () => {}, view());
     assert.match(html, /Blindspot/, 'the page rendered at all');
-    assert.equal(body.includes('<script>alert'), false, 'no injected script tag');
-    assert.equal(body.includes('<img src=x'), false, 'no injected image tag');
-    assert.match(body, /&lt;script&gt;/, 'the filename is visible, escaped');
-    assert.match(body, /&lt;img src=x/, 'the risk reason is visible, escaped');
+    assert.equal((html.match(/<script/g) ?? []).length, 1, 'exactly one script opens');
+    assert.equal((html.match(/<\/script>/g) ?? []).length, 1, 'exactly one script closes');
+    assert.equal(html.includes(HOSTILE), false, 'the raw file name never reaches the markup');
+    assert.equal(html.includes(HOSTILE_LINE), false, 'the raw line text never reaches the markup');
   });
 
-  test('a quote in a filename cannot break out of an attribute', () => {
-    ReportPanel.show(vscodeStub.Uri.file('/ext'), () => {}, report(`a".ts`));
-    const attrs = html.match(/data-file="[^"]*"/g) ?? [];
-    assert.equal(attrs.length > 0, true, 'the file link rendered');
-    for (const attr of attrs) {
-      assert.equal(attr.includes('&quot;'), true, `unescaped quote in ${attr}`);
-    }
-  });
-
-  test('the page still declares a script-src nonce and no inline fallback', () => {
-    ReportPanel.show(vscodeStub.Uri.file('/ext'), () => {}, report('src/app.ts'));
+  test('the script carries the nonce the policy demands, and nothing else runs', () => {
+    ReportPanel.show(EXT, () => {}, view('src/app.ts'));
     const csp = html.match(/Content-Security-Policy" content="([^"]+)"/)?.[1] ?? '';
+    const nonce = csp.match(/script-src 'nonce-([A-Za-z0-9]+)'/)?.[1];
     assert.match(csp, /default-src 'none'/);
-    assert.match(csp, /script-src 'nonce-[A-Za-z0-9]{32}'/);
-    assert.equal(csp.includes("script-src 'unsafe-inline'"), false);
+    assert.ok(nonce, `no script nonce in "${csp}"`);
+    assert.doesNotMatch(csp, /script-src[^;]*unsafe-inline/);
+    assert.match(html, new RegExp(`<script nonce="${nonce}">`));
+  });
+
+  test('the page may fetch its typefaces, and nothing else', () => {
+    ReportPanel.show(EXT, () => {}, view('src/app.ts'));
+    const csp = html.match(/Content-Security-Policy" content="([^"]+)"/)?.[1] ?? '';
+    assert.match(csp, /style-src [^;]*https:\/\/fonts\.googleapis\.com/);
+    assert.match(csp, /font-src https:\/\/fonts\.gstatic\.com/);
+    assert.doesNotMatch(csp, /connect-src|img-src/);
+  });
+
+  test('a later report is posted into the page, not reloaded over it', () => {
+    ReportPanel.show(EXT, () => {}, view('src/a.ts'));
+    const first = html;
+    ReportPanel.active.update(view('src/b.ts'));
+    assert.equal(html, first, 'the page (and the reader\'s slider) survives an update');
+    assert.equal(posted.length, 1);
+    assert.equal((posted[0] as PageData).files[0].path, 'src/b.ts');
+  });
+
+  test('the tab title carries the blindspot share', () => {
+    ReportPanel.show(EXT, () => {}, view('src/app.ts'));
+    assert.equal(title, 'Blindspot 60%');
   });
 });

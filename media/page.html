@@ -202,6 +202,7 @@ header {
 }
 .risk-strip .where { font-family: var(--mono); font-size: 0.82rem; }
 .risk-strip .what { font-size: 0.82rem; color: var(--muted); }
+.vscode .cta, .vscode .files tbody tr { cursor: pointer; }
 .cta {
   font-family: var(--sans); font-size: 0.85rem; font-weight: 500;
   padding: 9px 14px; border-radius: 3px; border: 1px solid var(--ink);
@@ -438,7 +439,7 @@ footer {
     <div class="col">
       <h2>이 카드의 숫자는 하나의 정의에서 나온다</h2>
       <p class="note">
-        여기 보이는 모든 값은 실제 스코어링 모델이 실제 세션 데이터(182줄, 5개 파일)를
+        여기 보이는 모든 값은 실제 스코어링 모델이 실제 세션 데이터(<span id="f-scope">182줄, 5개 파일</span>)를
         계산한 결과다. 하드코딩된 숫자는 하나도 없다. 아래 슬라이더로 <b>"읽었다"의
         기준</b>을 바꾸면 카드 전체가 다시 계산된다.
       </p>
@@ -721,9 +722,11 @@ node bin/blindspot.js report
 </div>
 
 <script>
-const DATA = __DATA__;
+// Inside the editor the page is a webview and can talk back to it; in a
+// browser it is a demo and cannot.
+const vscode = typeof acquireVsCodeApi === 'function' ? acquireVsCodeApi() : null;
 
-const W = DATA.weights;
+let DATA, W, LINES;
 const RISK_RANK = { critical: 4, high: 3, medium: 2, low: 1 };
 const SCORE_W = { coverage: 0.4, critical: 0.3, newCode: 0.15, ai: 0.15 };
 
@@ -748,13 +751,21 @@ const THRESHOLD_NOTE = {
 function pointsOf(sig) {
   return (sig.visible ? W.visible : 0) + (sig.focused ? W.focused : 0) +
          (sig.dwell ? W.dwell : 0) + (sig.caret ? W.caret : 0) +
-         (sig.edited ? W.edited : 0);
+         (sig.edited ? W.edited : 0) + (sig.revisit ? W.revisit : 0);
 }
 
-const LINES = DATA.files.map(f => ({
-  path: f.path,
-  lines: f.lines.map(l => ({ ...l, points: pointsOf(l.signals), severe: l.risk === 'critical' || l.risk === 'high' })),
-}));
+// The model's rule, as src/core/evidence.ts states it: enough signals, and
+// either the reader wrote the line or looked at it for long enough.
+function isRead(l, threshold) {
+  return l.points >= threshold && (l.signals.edited || l.read >= 1);
+}
+
+function index(data) {
+  return data.files.map(f => ({
+    path: f.path,
+    lines: f.lines.map(l => ({ ...l, points: pointsOf(l.signals), severe: l.risk === 'critical' || l.risk === 'high' })),
+  }));
+}
 
 function compute(threshold) {
   const buckets = { coverage: [0, 0], critical: [0, 0], newCode: [0, 0], ai: [0, 0] };
@@ -763,11 +774,10 @@ function compute(threshold) {
   for (const f of LINES) {
     let reviewed = 0, aiLines = 0, unseen = [];
     for (const l of f.lines) {
-      const isRead = l.points >= threshold;
       buckets.coverage[1]++; buckets.newCode[1]++;
       if (l.severe) buckets.critical[1]++;
       if (l.ai) { aiLines++; buckets.ai[1]++; }
-      if (isRead) {
+      if (isRead(l, threshold)) {
         reviewed++;
         buckets.coverage[0]++; buckets.newCode[0]++;
         if (l.severe) buckets.critical[0]++;
@@ -848,8 +858,8 @@ function groupHunks(unseen) {
 
 let threshold = 3;
 let sortMode = 'risk';
-let activeFile = 'src/auth/session.ts';
-let state = compute(threshold);
+let activeFile = null;
+let state = null;
 
 const $ = id => document.getElementById(id);
 
@@ -871,6 +881,7 @@ function renderCard() {
   $('f-total').textContent = state.total;
   $('f-read').textContent = state.reviewed;
   $('f-unseen').textContent = state.unseen;
+  $('f-scope').textContent = state.total + '줄, ' + state.files.length + '개 파일';
 
   const ranked = sortFiles(state.files);
   const worst = ranked.find(f => f.unseen > 0 && (f.blindspotRisk === 'critical' || f.blindspotRisk === 'high'));
@@ -913,8 +924,8 @@ function renderIneq() {
 
 function renderTabs() {
   $('tabs').innerHTML = LINES.map(f =>
-    '<button class="tab" role="tab" data-file="' + f.path + '" aria-selected="' +
-    (f.path === activeFile) + '">' + f.path + '</button>').join('');
+    '<button class="tab" role="tab" data-file="' + escapeHtml(f.path) + '" aria-selected="' +
+    (f.path === activeFile) + '">' + escapeHtml(f.path) + '</button>').join('');
   for (const b of document.querySelectorAll('.tab')) {
     b.addEventListener('click', () => { activeFile = b.dataset.file; renderTabs(); renderCode(); });
   }
@@ -922,9 +933,13 @@ function renderTabs() {
 
 function renderCode() {
   const file = LINES.find(f => f.path === activeFile);
+  if (!file) {
+    $('code').innerHTML = '';
+    $('code-summary').textContent = 'nothing to measure yet';
+    return;
+  }
   const rows = file.lines.map(l => {
-    const isRead = l.points >= threshold;
-    const cls = isRead ? 'read' : 'unread';
+    const cls = isRead(l, threshold) ? 'read' : 'unread';
     return '<div class="ln ' + cls + '"><span class="n">' + l.n + '</span>' +
       '<span class="t">' + escapeHtml(l.text || ' ') + '</span></div>';
   });
@@ -976,7 +991,8 @@ function renderFiles() {
   $('files').innerHTML = ranked.map(f => {
     const severe = f.unseen > 0 && (f.blindspotRisk === 'critical' || f.blindspotRisk === 'high');
     const covCls = f.coverage >= 0.9 ? 'cov-ok' : f.coverage < 0.7 ? 'cov-bad' : '';
-    return '<tr>' +
+    const first = f.hunks.length ? f.hunks[0].start : 1;
+    return '<tr data-file="' + escapeHtml(f.path) + '" data-line="' + first + '">' +
       '<td class="path' + (severe ? ' sev' : '') + '">' + escapeHtml(f.path) + '</td>' +
       '<td class="num">' + f.changed + '</td>' +
       '<td class="num" style="color:' + (f.unseen ? 'var(--ember)' : 'var(--faint)') + '">' + f.unseen + '</td>' +
@@ -1034,6 +1050,27 @@ $('sort-vol').addEventListener('click', () => {
   renderRegression();
 });
 
-renderTabs();
-renderAll();
+// In the editor, the file list opens the file at its first unread line and
+// the card's button jumps to the next unread hunk — the same messages the
+// old panel sent, so the extension side is unchanged.
+$('files').addEventListener('click', e => {
+  const row = e.target.closest('tr[data-file]');
+  if (row && vscode) vscode.postMessage({ type: 'open', file: row.dataset.file, line: Number(row.dataset.line) });
+});
+document.querySelector('.cta').addEventListener('click', () => {
+  if (vscode) vscode.postMessage({ type: 'reviewNext' });
+});
+if (vscode) document.documentElement.classList.add('vscode');
+
+function load(data) {
+  DATA = data;
+  W = data.weights;
+  LINES = index(data);
+  if (!LINES.some(f => f.path === activeFile)) activeFile = LINES.length ? LINES[0].path : null;
+  renderTabs();
+  renderAll();
+}
+
+window.addEventListener('message', e => load(e.data));
+load(__DATA__);
 </script>

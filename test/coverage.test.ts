@@ -1,7 +1,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULT_CONFIG } from '../src/core/config';
-import { buildReport, isIgnored, wholeFileTarget, type ReportSources } from '../src/core/coverage';
+import { buildReport, isIgnored, pageData, wholeFileTarget, type ReportSources } from '../src/core/coverage';
 import { emptyActivity, emptyEvidence, type FileDiff, type LineEvidence } from '../src/core/types';
 
 const cfg = DEFAULT_CONFIG;
@@ -270,5 +270,69 @@ describe('isIgnored', () => {
   test('a single star does not cross directory boundaries', () => {
     assert.equal(isIgnored('src/a.ts', ['src/*.ts']), true);
     assert.equal(isIgnored('src/nested/a.ts', ['src/*.ts']), false);
+  });
+});
+
+describe('pageData', () => {
+  /** The page's own rule, as written in media/page.html. */
+  function judgedByPage(page: ReturnType<typeof pageData>): number {
+    const w = page.weights;
+    let n = 0;
+    for (const f of page.files) {
+      for (const l of f.lines) {
+        const s = l.signals;
+        const points =
+          (s.visible ? w.visible : 0) +
+          (s.focused ? w.focused : 0) +
+          (s.dwell ? w.dwell : 0) +
+          (s.caret ? w.caret : 0) +
+          (s.edited ? w.edited : 0) +
+          (s.revisit ? w.revisit : 0);
+        if (points >= page.threshold && (s.edited || l.read >= 1)) n += 1;
+      }
+    }
+    return n;
+  }
+
+  test('one row per target line, judged the way the report judges it', () => {
+    const typed: LineEvidence = { ...emptyEvidence('typed'), humanEdits: 1, visibleMs: 500, focusedMs: 900, caretHits: 1 };
+    const { diffs, sources } = fixture({
+      'src/app.ts': {
+        lines: ['a', 'b', 'c', 'd'],
+        changed: [1, 2, 4],
+        evidence: { 1: read(), 2: skimmed(), 4: typed },
+      },
+    });
+    const page = pageData(diffs, sources, cfg);
+    const r = buildReport(diffs, sources, cfg, 'HEAD');
+
+    assert.equal(page.threshold, cfg.reviewThresholdPoints);
+    assert.deepEqual(page.weights, cfg.weights);
+    assert.deepEqual(page.files.map((f) => f.path), ['src/app.ts']);
+    assert.deepEqual(page.files[0].lines.map((l) => l.n), [1, 2, 4]);
+    assert.deepEqual(page.files[0].lines.map((l) => l.text), ['a', 'b', 'd']);
+    assert.equal(judgedByPage(page), r.reviewedLines);
+    assert.equal(r.reviewedLines, 2, 'the fixture exercises both ways to be reviewed');
+  });
+
+  test('carries risk and authorship per line', () => {
+    const { diffs, sources } = fixture({
+      'src/auth/session.ts': { lines: ['const a = 1;'], changed: [1], evidence: { 1: machine(false) } },
+    });
+    const line = pageData(diffs, sources, cfg).files[0].lines[0];
+    assert.equal(line.risk, 'critical');
+    assert.equal(typeof line.reason, 'string');
+    assert.equal(line.ai, true);
+  });
+
+  test('skips binary and ignored files, like the report', () => {
+    const { diffs, sources } = fixture({
+      'src/app.ts': { lines: ['a'], changed: [1] },
+      'yarn.lock': { lines: ['x'], changed: [1] },
+      'img.png': { lines: [], changed: [] },
+    });
+    diffs[2].binary = true;
+    const page = pageData(diffs, sources, { ...cfg, ignore: ['**/*.lock'] });
+    assert.deepEqual(page.files.map((f) => f.path), ['src/app.ts']);
   });
 });
