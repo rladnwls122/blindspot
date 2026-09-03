@@ -6,6 +6,7 @@ import {
   renderBlindspots,
   renderCard,
   renderFiles,
+  renderReading,
   renderScore,
   renderSummaryLine,
   visualWidth,
@@ -160,6 +161,27 @@ describe('renderScore', () => {
     const text = renderScore(r);
     // Nothing in this diff was machine-written.
     assert.match(text, /AI-generated\s+—/);
+  });
+});
+
+describe('renderReading', () => {
+  test('shows the three measurements apart, the pace, and what was interacted with', () => {
+    const r = report({
+      'src/app.ts': { lines: ['a', 'b', 'c', 'd'], changed: [1, 2, 3, 4], read: [1, 2] },
+    });
+    const text = renderReading(r);
+    assert.match(text, /Read\s+\d+(\.\d+)?\s+2\/4 lines, 2 interacted with/);
+    assert.match(text, /Focus\s+\d+/);
+    assert.match(text, /Activity\s+\d+/);
+    assert.match(text, /Pace\s+≈ \d+(\.\d+)? lines\/min/);
+    assert.match(text, /Final \d+/);
+  });
+
+  test('says when deletions went unmeasured', () => {
+    const diffs = [{ file: 'a.ts', addedLines: [1], modifiedLines: [], deletedLines: 3, binary: false }];
+    const r = buildReport(diffs, { getText: () => ['x'], getEvidence: () => undefined }, cfg, 'HEAD', 0);
+    assert.match(renderReading(r), /3 lines removed, not measured/);
+    assert.match(renderReading(r), /no reading time yet/);
   });
 });
 

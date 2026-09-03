@@ -58,6 +58,42 @@ describe('buildReport', () => {
     assert.equal(r.blindspot, 0.5);
   });
 
+  test('keeps reviewed lines the reader touched apart from ones read by screen time alone', () => {
+    const { diffs, sources } = fixture({
+      'src/app.ts': {
+        lines: ['a', 'b', 'c'],
+        changed: [1, 2, 3],
+        evidence: {
+          1: read(),
+          2: { ...emptyEvidence(), visibleMs: 2500, focusedMs: 2500, dwellEvents: 1 },
+          3: { ...emptyEvidence(), visibleMs: 2500, focusedMs: 2500, dwellEvents: 1, pointerHits: 1 },
+        },
+      },
+    });
+    const r = buildReport(diffs, sources, cfg, 'HEAD');
+    assert.equal(r.reviewedLines, 3);
+    assert.equal(r.interactedLines, 2, 'the caret line and the mouse line; the passive one is not counted');
+    assert.equal(r.files[0].interactedLines, 2);
+  });
+
+  test('deleted lines are carried into the report but never scored', () => {
+    const diffs: FileDiff[] = [
+      { file: 'src/a.ts', addedLines: [1], modifiedLines: [], deletedLines: 7, binary: false },
+      { file: 'src/b.ts', addedLines: [1], modifiedLines: [], deletedLines: 2, binary: false },
+    ];
+    const sources: ReportSources = { getText: () => ['x'], getEvidence: () => read() };
+    const r = buildReport(diffs, sources, cfg, 'HEAD');
+    assert.equal(r.deletedLines, 9);
+    assert.equal(r.files.find((f) => f.file === 'src/a.ts')?.deletedLines, 7);
+    assert.equal(r.coverage, 1, 'deletions do not count against coverage');
+  });
+
+  test('records whether the base is a completed review or a plain ref', () => {
+    const empty: ReportSources = { getText: () => undefined, getEvidence: () => undefined };
+    assert.equal(buildReport([], empty, cfg, 'HEAD').sinceReview, false);
+    assert.equal(buildReport([], empty, cfg, 'abc1234', 0, { sinceReview: true }).sinceReview, true);
+  });
+
   test('a line with no evidence at all is unseen, not missing', () => {
     const { diffs, sources } = fixture({
       'src/app.ts': { lines: ['a', 'b'], changed: [1, 2] },
@@ -236,6 +272,28 @@ describe('metrics', () => {
     const w = cfg.finalWeights;
     const expected = Math.round((w.read * m.read.fraction + w.focus * m.focus.fraction + w.activity * 1) * 1000) / 10;
     assert.equal(m.final, expected);
+  });
+
+  test('pace is recovered from the attention budget, and null before any time was spent', () => {
+    const lines = Array.from({ length: 30 }, (_, i) => `line ${i + 1}`);
+    const evidence: Record<number, LineEvidence> = {};
+    // Thirty lines read at 4 s of focused time each: 120 line-seconds, which
+    // at attentionLines line-seconds per second is 60 s of attention.
+    for (let l = 1; l <= 30; l++) evidence[l] = { ...read(), focusedMs: 4000 };
+    const { diffs, sources } = fixture({
+      'src/app.ts': { lines, changed: lines.map((_, i) => i + 1), evidence },
+    });
+    const r = buildReport(diffs, sources, cfg, 'HEAD');
+    assert.equal(r.metrics.pace.attentionMs, (30 * 4000) / cfg.attentionLines);
+    assert.equal(r.metrics.pace.linesPerMinute, 30);
+
+    const untouched = buildReport(
+      [{ file: 'a.ts', addedLines: [1], modifiedLines: [], deletedLines: 0, binary: false }],
+      { getText: () => ['x'], getEvidence: () => undefined },
+      cfg,
+      'HEAD',
+    );
+    assert.equal(untouched.metrics.pace.linesPerMinute, null);
   });
 
   test('an empty target reads as complete and unfocused, not as NaN', () => {

@@ -103,6 +103,9 @@ function parseStoredLine(entry: unknown): StoredLine | null {
     focusedMs: num(ev.focusedMs, 0),
     dwellEvents: num(ev.dwellEvents, 0),
     caretHits: num(ev.caretHits, 0),
+    // Added after version 2 shipped; a record without it simply never saw
+    // the mouse, which is what zero means.
+    pointerHits: num(ev.pointerHits, 0),
     humanEdits: num(ev.humanEdits, 0),
     revisits: num(ev.revisits, 0),
     provenance: provenance(ev.provenance),

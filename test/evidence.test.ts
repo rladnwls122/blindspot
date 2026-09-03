@@ -131,6 +131,20 @@ describe('evaluate', () => {
     assert.equal(evaluate(evidence, cfg).visible, true);
   });
 
+  test('the mouse resting on a line is navigation, as the caret is', () => {
+    // Reading with the mouse leaves the caret at the top of the file. The
+    // hover request the editor makes when the pointer stops is the same act
+    // observed by a different sensor, and it satisfies the same signal.
+    const byMouse = evaluate(ev({ visibleMs: 2500, focusedMs: 2500, dwellEvents: 1, pointerHits: 1 }), cfg);
+    assert.equal(byMouse.caret, true);
+    assert.equal(byMouse.interacted, true);
+    assert.equal(byMouse.reviewed, true);
+    // Screen time and a pause alone: read, but nobody touched it.
+    const passive = evaluate(ev({ visibleMs: 2500, focusedMs: 2500, dwellEvents: 1 }), cfg);
+    assert.equal(passive.reviewed, true);
+    assert.equal(passive.interacted, false);
+  });
+
   test('the threshold is configurable without touching the evidence', () => {
     const strict = { ...cfg, reviewThresholdPoints: 5 };
     const evidence = ev({ visibleMs: 2500, focusedMs: 2500, dwellEvents: 1, caretHits: 1 });
@@ -145,6 +159,11 @@ describe('explain', () => {
     assert.match(text, /reviewed|blindspot/);
     assert.match(text, /on screen/);
     assert.match(text, /paused/);
+  });
+
+  test('says how the line was navigated to, by caret and by mouse', () => {
+    const text = explain(ev({ caretHits: 1, pointerHits: 2 }), cfg);
+    assert.match(text, /✓ navigated \(1× caret, 2× mouse\)/);
   });
 });
 
@@ -169,6 +188,7 @@ describe('provenance', () => {
     );
     assert.equal(merged.visibleMs, 350);
     assert.equal(merged.caretHits, 1);
+    assert.equal(merged.pointerHits, 0);
     assert.equal(merged.dwellEvents, 2);
     assert.equal(merged.provenance, 'bulk');
     assert.equal(merged.lastSeen, 9);

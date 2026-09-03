@@ -1,11 +1,15 @@
 import * as vscode from 'vscode';
-import { pct } from '../core/score';
+import { MODE_LABEL, baseLabel, headline, paceLabel } from '../core/labels';
 import type { DiffReport } from '../core/types';
 
 /**
- * The always-on number. It is deliberately phrased as the blindspot, not the
- * coverage: "64% reviewed" reads like a pass mark, "36% unread" reads like a
- * question you have not answered yet.
+ * The always-on number, phrased in the direction the mode calls for.
+ *
+ * In diff mode it is the blindspot, not the coverage: "64% reviewed" reads
+ * like a pass mark, "36% unread" reads like a question you have not answered
+ * yet. In reading mode there is no deadline and no commit, so it is progress:
+ * "62% read". The word is always attached, because a bare percentage cannot
+ * say which of the two it is.
  */
 export class StatusBar implements vscode.Disposable {
   private readonly item: vscode.StatusBarItem;
@@ -21,31 +25,37 @@ export class StatusBar implements vscode.Disposable {
       this.item.hide();
       return;
     }
-    const blind = pct(report.blindspot);
-    const severe = report.hunks.some((h) => h.risk === 'critical' || h.risk === 'high');
+    const h = headline(report);
+    const severe = report.hunks.some((x) => x.risk === 'critical' || x.risk === 'high');
+    const reading = report.mode === 'reading';
 
-    this.item.text = blind === 0 ? `$(eye) 0%` : `$(eye-closed) ${blind}%`;
+    const icon = reading ? '$(book)' : report.unseenLines === 0 ? '$(eye)' : '$(eye-closed)';
+    this.item.text = `${icon} ${h.value}% ${h.label}`;
     this.item.tooltip = new vscode.MarkdownString(
       [
-        `**Blindspot ${blind}%** — ${report.unseenLines} of ${report.totalChangedLines} ${
-          report.mode === 'reading' ? 'lines in opened files' : 'changed lines'
-        } unread`,
+        `**Blindspot · ${MODE_LABEL[report.mode]}** — ${baseLabel(report)}`,
         '',
-        `Read **${report.metrics.read.score}** · Focus **${report.metrics.focus.score}** · Activity **${report.metrics.activity.score}**`,
+        `${report.reviewedLines} of ${report.totalChangedLines} ${
+          reading ? 'lines in opened files' : 'changed lines'
+        } read, ${report.interactedLines} of them interacted with · ${report.unseenLines} unread`,
         '',
-        `Review Score **${report.score.score}**`,
+        `Read **${report.metrics.read.score}** · Focus **${report.metrics.focus.score}** · ` +
+          `Activity **${report.metrics.activity.score}** · ${paceLabel(report.metrics.pace)}`,
         '',
-        severe ? '⚠️ Unreviewed lines in high-risk code.' : '',
+        reading ? '' : `Review Score **${report.score.score}**`,
+        severe ? '⚠️ Unread lines in high-risk code.' : '',
         '',
-        '_Click to open the report._',
+        '_Click to open the report. Switch mode with `Blindspot: Switch Mode`._',
       ]
-        .filter(Boolean)
+        .filter((line, i, all) => line !== '' || all[i - 1] !== '')
         .join('\n'),
     );
 
-    if (blind >= 35 && severe) {
+    // Warning colours belong to the diff, where unread code is about to be
+    // committed. Reading has no such moment; a low number there is a start.
+    if (!reading && h.value >= 35 && severe) {
       this.item.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
-    } else if (blind >= 25) {
+    } else if (!reading && h.value >= 25) {
       this.item.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
     } else {
       this.item.backgroundColor = undefined;

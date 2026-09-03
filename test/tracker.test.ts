@@ -249,6 +249,58 @@ describe('AttentionTracker', { concurrency: 1 }, () => {
     assert.equal(seen(6).focusedMs > atIdle, true);
   });
 
+  test('the attention budget follows the mouse when it moved more recently than the caret', () => {
+    // 60 lines on screen, caret parked on line 1, reading with the mouse
+    // around line 45. Without the pointer the budget would land on line 1.
+    const editor = makeEditor(60, 0, 59, 0);
+    world.visibleEditors = [editor];
+    world.activeEditor = editor;
+    startTracker();
+    hold(250);
+    tracker.notePointer(editor.document, 45);
+    // The budget is shared with the lines on both sides of a mid-screen
+    // focus, so a line there takes longer to read than one at the top edge.
+    hold(24000);
+
+    assert.equal(evaluate(seen(45), DEFAULT_CONFIG).reviewed, true, 'the line under the mouse was read');
+    assert.equal(evaluate(seen(1), DEFAULT_CONFIG).reviewed, false, 'the line under the idle caret was not');
+    assert.equal(seen(45).pointerHits, 1, 'and the rest itself is evidence');
+    assert.equal(evaluate(seen(45), DEFAULT_CONFIG).interacted, true);
+  });
+
+  test('a scroll makes the mouse position stale, and the caret takes over again', () => {
+    const editor = makeEditor(400, 0, 59, 5);
+    world.visibleEditors = [editor];
+    world.activeEditor = editor;
+    startTracker();
+    hold(250);
+    tracker.notePointer(editor.document, 50);
+    hold(2000);
+    const beforeScroll = seen(50).focusedMs;
+    assert.equal(beforeScroll > seen(6).focusedMs, true, 'the mouse line led while the mouse was fresh');
+
+    // The text moved under a still mouse: line 50 is now somewhere else.
+    editor.visibleRanges = [{ start: { line: 100 }, end: { line: 159 } }];
+    editor.selection = { active: { line: 120 } };
+    hold(24000);
+    assert.equal(evaluate(seen(121), DEFAULT_CONFIG).reviewed, true, 'the caret is the focus again');
+    assert.equal(seen(50).focusedMs, beforeScroll, 'the old mouse line earned nothing more');
+  });
+
+  test('the same line hovered twice in quick succession is one rest', () => {
+    const editor = makeEditor(20, 0, 19, 0);
+    world.visibleEditors = [editor];
+    world.activeEditor = editor;
+    startTracker();
+    tracker.notePointer(editor.document, 7);
+    mock.timers.tick(100);
+    tracker.notePointer(editor.document, 7);
+    assert.equal(seen(7).pointerHits, 1);
+    mock.timers.tick(2000);
+    tracker.notePointer(editor.document, 7);
+    assert.equal(seen(7).pointerHits, 2);
+  });
+
   test('review actions are counted, and completing a review sets the baseline', () => {
     startTracker();
     tracker.recordActivity('jumps');

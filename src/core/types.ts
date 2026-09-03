@@ -34,6 +34,13 @@ export interface LineEvidence {
   dwellEvents: number;
   /** Times the caret was placed on, or a selection covered, this line. */
   caretHits: number;
+  /**
+   * Times the mouse pointer came to rest on this line. The editor reports it
+   * through the hover request it makes when the pointer stops over a token —
+   * the one place an IDE lets slip where the mouse is, and mouse position is
+   * the closest thing to gaze an editor can observe.
+   */
+  pointerHits: number;
   /** Times a human keystroke changed this line. */
   humanEdits: number;
   /**
@@ -54,6 +61,7 @@ export function emptyEvidence(provenance: Provenance = 'unknown'): LineEvidence 
     focusedMs: 0,
     dwellEvents: 0,
     caretHits: 0,
+    pointerHits: 0,
     humanEdits: 0,
     revisits: 0,
     provenance,
@@ -76,17 +84,25 @@ export interface EvidenceSignals {
   readFraction: number;
   /** Focused time against the focus ceiling, in [0,1]. */
   focusFraction: number;
+  /**
+   * The reader did something to this line — placed the caret, rested the
+   * mouse on it, or typed in it — rather than only having it on screen. A
+   * verdict backed by interaction is one nobody has to take on trust.
+   */
+  interacted: boolean;
   reviewed: boolean;
 }
 
 /**
- * What the report measures against.
+ * What the report measures against. Two modes, and the user switches between
+ * them from the panel, the status bar or the command palette.
  *
- * - `diff`       working tree against `baseRef` (a PR-style review)
- * - `unreviewed` everything since the last completed review, commits included
- * - `reading`    every line of every file you have opened here; no git needed
+ * - `diff`     the lines you changed: the working tree against a base. The
+ *              base is the last completed review when there is one, or
+ *              `baseRef` (HEAD by default). Needs git.
+ * - `reading`  every line of every file you have opened here. Needs no git.
  */
-export type TargetMode = 'diff' | 'unreviewed' | 'reading';
+export type TargetMode = 'diff' | 'reading';
 
 /** Review actions, counted per workspace. Raw counts, never merged into time. */
 export interface ActivityCounts {
@@ -118,6 +134,15 @@ export interface ReadingMetrics {
   focus: { fraction: number; score: number; effectiveMs: number };
   /** Activity events per target line, saturating. */
   activity: { fraction: number; score: number; counts: ActivityCounts };
+  /**
+   * How fast the reviewed lines were read. Attention is a conserved budget
+   * (see `attention.ts`), so the focused time credited to the target lines
+   * divided by the throughput of that budget is roughly the wall-clock
+   * attention they received. `linesPerMinute` is null until any time at all
+   * has been spent. Review studies put the ceiling for still catching defects
+   * at 300–500 lines an hour; a pace far above that is a number to distrust.
+   */
+  pace: { attentionMs: number; linesPerMinute: number | null };
   final: number;
 }
 
@@ -149,7 +174,15 @@ export interface FileReport {
   file: string;
   changedLines: number;
   reviewedLines: number;
+  /** Reviewed lines the reader also interacted with (caret, mouse or edit). */
+  interactedLines: number;
   unseenLines: number;
+  /**
+   * Lines removed with no replacement. They are reported, never scored: you
+   * cannot fail to read a line that is no longer there, but a deletion can
+   * absolutely be the bug, so the report says how many there were.
+   */
+  deletedLines: number;
   coverage: number;
   /** Coverage counting each line by its risk weight. */
   weightedCoverage: number;
@@ -183,12 +216,18 @@ export interface ScoreBreakdown {
 
 export interface DiffReport {
   baseRef: string;
+  /** True when `baseRef` is the commit a completed review ended at. */
+  sinceReview: boolean;
   mode: TargetMode;
   generatedAt: number;
   metrics: ReadingMetrics;
   totalChangedLines: number;
   reviewedLines: number;
+  /** Reviewed lines backed by interaction, not screen time alone. */
+  interactedLines: number;
   unseenLines: number;
+  /** Lines deleted across the diff; reported, not scored. */
+  deletedLines: number;
   coverage: number;
   blindspot: number;
   score: ScoreBreakdown;

@@ -9,10 +9,16 @@ import type { DiffReport } from '../core/types';
  * in the overview ruler. The code itself keeps its own colours — painting the
  * whole line was a wall of orange that taught people to ignore it, and made
  * the text harder to read at exactly the moment they were supposed to read it.
+ *
+ * The colour follows the mode. In a diff an unread line is a warning, so it
+ * is orange, and red when the code is high-risk. While reading a codebase an
+ * unread line is simply one you have not got to yet, so it is blue — the
+ * same mark with none of the alarm, because there is nothing to alarm about.
  */
 export class Decorations implements vscode.Disposable {
   private readonly unreviewed: vscode.TextEditorDecorationType;
   private readonly severe: vscode.TextEditorDecorationType;
+  private readonly unread: vscode.TextEditorDecorationType;
   private enabled = true;
 
   constructor() {
@@ -26,6 +32,12 @@ export class Decorations implements vscode.Disposable {
       gutterIconPath: gutterBar('#ef4444'),
       gutterIconSize: 'contain',
       overviewRulerColor: new vscode.ThemeColor('errorForeground'),
+      overviewRulerLane: vscode.OverviewRulerLane.Right,
+    });
+    this.unread = vscode.window.createTextEditorDecorationType({
+      gutterIconPath: gutterBar('#3b82f6'),
+      gutterIconSize: 'contain',
+      overviewRulerColor: new vscode.ThemeColor('blindspot.unreadBorder'),
       overviewRulerLane: vscode.OverviewRulerLane.Right,
     });
   }
@@ -71,13 +83,16 @@ export class Decorations implements vscode.Disposable {
       }
     }
 
-    editor.setDecorations(this.unreviewed, plain);
+    const reading = report.mode === 'reading';
+    editor.setDecorations(this.unreviewed, reading ? [] : plain);
+    editor.setDecorations(this.unread, reading ? plain : []);
     editor.setDecorations(this.severe, risky);
   }
 
   private clearAll(): void {
     for (const editor of vscode.window.visibleTextEditors) {
       editor.setDecorations(this.unreviewed, []);
+      editor.setDecorations(this.unread, []);
       editor.setDecorations(this.severe, []);
     }
   }
@@ -85,6 +100,7 @@ export class Decorations implements vscode.Disposable {
   dispose(): void {
     this.clearAll();
     this.unreviewed.dispose();
+    this.unread.dispose();
     this.severe.dispose();
   }
 }

@@ -27,6 +27,19 @@ describe('LineLedger crediting', () => {
     assert.equal(l.at(1).visibleMs, 800);
     assert.equal(l.at(1).focusedMs, 0);
   });
+
+  test('a mouse rest is credited to one line and survives an edit of that line', () => {
+    const l = readLedger(['a', 'b', 'c']);
+    l.addPointer(2, NOW);
+    l.addPointer(2, NOW + 1000);
+    assert.equal(l.at(2).pointerHits, 2);
+    assert.equal(l.at(1).pointerHits, 0);
+    assert.equal(hasEvidence(l.at(2)), true);
+    // Like caret hits, having pointed at the line is kept when its text changes.
+    l.applyChange(2, 2, 1, { human: true, provenance: 'typed', now: NOW + 2000 });
+    assert.equal(l.at(2).pointerHits, 2);
+    assert.equal(l.at(2).visibleMs, 0);
+  });
 });
 
 describe('LineLedger.applyChange', () => {

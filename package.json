@@ -30,7 +30,8 @@
     "diff",
     "git",
     "ai",
-    "attention"
+    "attention",
+    "reading"
   ],
   "main": "./out/src/extension/extension.js",
   "bin": {
@@ -44,19 +45,34 @@
       {
         "command": "blindspot.showReport",
         "title": "Blindspot: Show Review Report",
-        "icon": "$(eye)"
+        "icon": "$(graph)"
       },
       {
         "command": "blindspot.reviewBlindspot",
-        "title": "Blindspot: Review Blindspot (jump to next unseen hunk)"
+        "title": "Blindspot: Review Blindspot (jump to next unread hunk)",
+        "icon": "$(debug-step-over)"
+      },
+      {
+        "command": "blindspot.switchMode",
+        "title": "Blindspot: Switch Mode (Diff / Reading)",
+        "icon": "$(arrow-swap)"
+      },
+      {
+        "command": "blindspot.toggleMode",
+        "title": "Blindspot: Toggle Diff / Reading Mode"
+      },
+      {
+        "command": "blindspot.selectBase",
+        "title": "Blindspot: Choose What the Diff Is Measured Against"
       },
       {
         "command": "blindspot.toggleDecorations",
-        "title": "Blindspot: Toggle Unreviewed Highlighting"
+        "title": "Blindspot: Toggle Unread Line Markers"
       },
       {
         "command": "blindspot.markFileReviewed",
-        "title": "Blindspot: Mark Current File As Reviewed"
+        "title": "Blindspot: Mark File As Reviewed",
+        "icon": "$(check)"
       },
       {
         "command": "blindspot.resetSession",
@@ -71,8 +87,9 @@
         "title": "Blindspot: Complete Review (move baseline to HEAD)"
       },
       {
-        "command": "blindspot.selectTarget",
-        "title": "Blindspot: Select What to Measure"
+        "command": "blindspot.refresh",
+        "title": "Blindspot: Refresh",
+        "icon": "$(refresh)"
       }
     ],
     "configuration": {
@@ -108,24 +125,24 @@
         "blindspot.focalModel": {
           "type": "boolean",
           "default": true,
-          "description": "Weight screen time by distance from the caret instead of crediting every line in the viewport equally. Off = the flat viewport model."
+          "description": "Weight screen time by distance from the reader's focus (the caret, or the mouse when it moved more recently) instead of crediting every line in the viewport equally. Off = the flat viewport model."
         },
         "blindspot.focalSpanLines": {
           "type": "number",
-          "default": 5,
-          "description": "Lines either side of the caret that receive full attention credit."
+          "default": 2,
+          "description": "Lines either side of the focus that receive full attention credit."
         },
         "blindspot.focalDecayLines": {
           "type": "number",
-          "default": 24,
-          "description": "Distance from the caret at which attention credit bottoms out."
+          "default": 10,
+          "description": "Distance from the focus at which attention credit bottoms out."
         },
         "blindspot.peripheralFloor": {
           "type": "number",
-          "default": 0.2,
+          "default": 0.05,
           "minimum": 0,
           "maximum": 1,
-          "description": "Smallest share of a tick a line far from the caret can earn."
+          "description": "Smallest share of a tick a line far from the focus can earn."
         },
         "blindspot.contentScaling": {
           "type": "boolean",
@@ -149,20 +166,36 @@
         },
         "blindspot.idleAfterMs": {
           "type": "number",
-          "default": 60000,
-          "description": "With no caret, scroll or edit for this long, time on screen stops counting as reading."
+          "default": 30000,
+          "description": "With no caret, scroll, mouse rest or edit for this long, time on screen stops counting as reading."
         },
-        "blindspot.target": {
+        "blindspot.mode": {
           "type": "string",
-          "enum": ["auto", "unreviewed", "diff", "reading"],
+          "enum": [
+            "auto",
+            "diff",
+            "reading"
+          ],
           "enumDescriptions": [
-            "Unreviewed changes in a git repository; reading everywhere else.",
-            "Everything changed since the last completed review, commits included.",
-            "The working tree against blindspot.baseRef.",
+            "Diff in a git repository; reading anywhere else.",
+            "The lines you changed: the working tree since the last completed review, or since blindspot.baseRef. Needs git.",
             "Every line of every file you have opened in this folder. Needs no git."
           ],
           "default": "auto",
-          "description": "What Blindspot measures reading against."
+          "description": "What Blindspot measures. Switch from the report panel, the status bar tooltip, or `Blindspot: Switch Mode`."
+        },
+        "blindspot.diffSince": {
+          "type": "string",
+          "enum": [
+            "lastReview",
+            "baseRef"
+          ],
+          "enumDescriptions": [
+            "Everything since the commit the last completed review ended at, commits included. Until a review has been completed, blindspot.baseRef.",
+            "Always the working tree against blindspot.baseRef."
+          ],
+          "default": "lastReview",
+          "description": "In diff mode, what the diff is measured against."
         },
         "blindspot.readingSpeedGuard": {
           "type": "boolean",
@@ -212,24 +245,79 @@
           "command": "blindspot.showReport",
           "group": "navigation"
         }
+      ],
+      "view/title": [
+        {
+          "command": "blindspot.switchMode",
+          "when": "view == blindspot.files",
+          "group": "navigation@1"
+        },
+        {
+          "command": "blindspot.reviewBlindspot",
+          "when": "view == blindspot.files",
+          "group": "navigation@2"
+        },
+        {
+          "command": "blindspot.showReport",
+          "when": "view == blindspot.files",
+          "group": "navigation@3"
+        },
+        {
+          "command": "blindspot.refresh",
+          "when": "view == blindspot.files",
+          "group": "navigation@4"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "blindspot.markFileReviewed",
+          "when": "view == blindspot.files && viewItem == file",
+          "group": "inline"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "blindspot.refresh",
+          "when": "false"
+        }
       ]
     },
     "colors": [
       {
         "id": "blindspot.unreviewedBorder",
-        "description": "Overview-ruler marker for lines you have not read.",
+        "description": "Overview-ruler marker for changed lines you have not read (diff mode).",
         "defaults": {
           "dark": "#f97316",
           "light": "#ea580c",
           "highContrast": "#f97316"
         }
+      },
+      {
+        "id": "blindspot.unreadBorder",
+        "description": "Overview-ruler marker for lines you have not read yet (reading mode).",
+        "defaults": {
+          "dark": "#3b82f6",
+          "light": "#2563eb",
+          "highContrast": "#3b82f6"
+        }
       }
-    ]
+    ],
+    "views": {
+      "scm": [
+        {
+          "id": "blindspot.files",
+          "name": "Blindspot",
+          "icon": "$(eye-closed)",
+          "contextualTitle": "Blindspot",
+          "visibility": "visible"
+        }
+      ]
+    }
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "watch": "tsc -p tsconfig.json --watch",
-    "test": "npm run build && node --test out/test/",
+    "test": "npm run build && node scripts/run-tests.js",
     "demo": "npm run build && node out/demo/simulate.js",
     "demo:html": "npm run build && node out/demo/simulate.js --html demo/report.html",
     "clean": "rm -rf out",

@@ -112,6 +112,9 @@ function view(file = HOSTILE) {
     },
     files: [],
     hunks: [],
+    sinceReview: false,
+    interactedLines: 0,
+    deletedLines: 0,
     worstFile: null,
   };
   return { report, data };

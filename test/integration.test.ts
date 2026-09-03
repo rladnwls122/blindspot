@@ -303,11 +303,31 @@ describe('cli against a real repository', () => {
     assert.ok(report.totalChangedLines > 0);
   });
 
+  test('`read` reports every file with reading evidence, whole, as the editor does', () => {
+    write('src/whole.ts', ['const a = 1;', 'const b = 2;', 'const c = 3;', 'const d = 4;']);
+    recordAsRead('src/whole.ts', [1, 2]);
+    const { stdout, code } = blindspot(['read']);
+    assert.equal(code, 0);
+    assert.match(stdout, /Read\s+\d/);
+    assert.match(stdout, /src\/whole\.ts/);
+    const report = JSON.parse(blindspot(['read', '--json']).stdout) as DiffReport;
+    assert.equal(report.mode, 'reading');
+    const file = report.files.find((f) => f.file === 'src/whole.ts');
+    assert.equal(file?.changedLines, 4, 'the whole file is the target, not a diff');
+    assert.equal(file?.reviewedLines, 2);
+    assert.equal(file?.interactedLines, 2);
+    fs.rmSync(path.join(repo, 'src/whole.ts'));
+  });
+
   test('outside a git repository it says so and does not crash', () => {
     const plain = fs.mkdtempSync(path.join(os.tmpdir(), 'blindspot-nogit-'));
     try {
       const { code } = blindspot(['check'], plain);
       assert.equal(code, 0);
+      // Reading needs a folder, not a repository.
+      const read = blindspot(['read'], plain);
+      assert.equal(read.code, 0);
+      assert.match(read.stdout, /no reading recorded/);
     } finally {
       fs.rmSync(plain, { recursive: true, force: true });
     }
