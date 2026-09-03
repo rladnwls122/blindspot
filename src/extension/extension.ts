@@ -2,7 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { DEFAULT_CONFIG, type BlindspotConfig } from '../core/config';
-import { buildReport, wholeFileTarget, type ReportSources } from '../core/coverage';
+import { buildReport, pageData, wholeFileTarget, type ReportSources } from '../core/coverage';
 import { pct } from '../core/score';
 import type { DiffReport, FileDiff, TargetMode } from '../core/types';
 import type { AiRegions } from '../core/store';
@@ -11,7 +11,7 @@ import { Decorations } from './decorations';
 import { EvidenceHover } from './hover';
 import { collectDiff, commitExists, findGitContext, headCommit } from './git';
 import { Navigator } from './navigator';
-import { ReportPanel, type PanelMessage } from './panel';
+import { ReportPanel, type PanelMessage, type PanelView } from './panel';
 import { StatusBar } from './statusbar';
 import { installHook, loadAiRegions, loadConfig, loadState, saveState } from './storage';
 import { AttentionTracker, docLines } from './tracker';
@@ -136,6 +136,8 @@ class Controller implements vscode.Disposable {
   private navigator!: Navigator;
   private commitWatcher!: CommitWatcher;
   private report: DiffReport | null = null;
+  /** What the last report measured, for the panel's page. */
+  private targets: FileDiff[] = [];
   private refreshTimer: NodeJS.Timeout | undefined;
   private saveTimer: NodeJS.Timeout | undefined;
   private refreshing = false;
@@ -273,10 +275,16 @@ class Controller implements vscode.Disposable {
         mode,
         activity: this.tracker.activityCounts,
       });
+      this.targets = targets;
       this.navigator.sync(this.report);
       this.statusBar.update(this.report, this.setting('showStatusBar', true));
       this.decorations.apply(this.report, this.root);
-      ReportPanel.active?.update(this.report);
+      // The page's evidence costs another pass over every target line; only
+      // pay for it while someone can see it.
+      ReportPanel.active?.update({
+        report: this.report,
+        data: pageData(targets, sources, this.cfg),
+      });
       return this.report;
     } catch (err) {
       console.error('[blindspot] refresh failed', err);
@@ -422,8 +430,8 @@ class Controller implements vscode.Disposable {
       this.context.subscriptions.push(vscode.commands.registerCommand(id, fn));
 
     push('blindspot.showReport', async () => {
-      const report = (await this.refresh()) ?? this.report;
-      ReportPanel.show(this.context.extensionUri, (m) => void this.onPanelMessage(m), report);
+      await this.refresh();
+      ReportPanel.show(this.context.extensionUri, (m) => void this.onPanelMessage(m), this.panelView());
     });
 
     push('blindspot.reviewBlindspot', () => this.reviewNext());
@@ -624,8 +632,14 @@ class Controller implements vscode.Disposable {
     );
     if (choice === 'Review Blindspot') await this.reviewNext();
     else if (choice === 'Show Report') {
-      ReportPanel.show(this.context.extensionUri, (m) => void this.onPanelMessage(m), this.report);
+      ReportPanel.show(this.context.extensionUri, (m) => void this.onPanelMessage(m), this.panelView());
     }
+  }
+
+  /** The panel's input: the last report, and the evidence behind it. */
+  private panelView(): PanelView | null {
+    if (!this.report) return null;
+    return { report: this.report, data: pageData(this.targets, this.makeSources(), this.cfg) };
   }
 
   // ------------------------------------------------------------------- state

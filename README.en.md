@@ -230,7 +230,7 @@ To debug the extension: open this folder in VS Code and press <kbd>F5</kbd>.
 [`demo/index.html`](demo/index.html) is the same report with the threshold made
 adjustable: move the slider and every number on the page — coverage, the file
 ranking, the Review Score — recomputes from the same per-line signals the
-extension records. It is generated from `demo/page.template.html`, so the
+extension records. It is generated from `media/page.html`, so the
 numbers in it can never drift from the model.
 
 ### Commands

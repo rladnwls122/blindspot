@@ -1,12 +1,13 @@
-import type { BlindspotConfig } from './config';
+import type { BlindspotConfig, SignalWeights } from './config';
 import { evaluate, isMachineAuthored } from './evidence';
-import { classifyLine, maxRisk, riskRank, isSevere } from './risk';
+import { classifyLine, maxRisk, riskRank, isSevere, type RiskVerdict } from './risk';
 import { computeScore, type ScoreBuckets } from './score';
 import { emptyActivity, emptyEvidence } from './types';
 import type {
   ActivityCounts,
   BlindspotHunk,
   DiffReport,
+  EvidenceSignals,
   FileDiff,
   FileReport,
   LineEvidence,
@@ -53,6 +54,92 @@ export interface ReportOptions {
   activity?: ActivityCounts;
 }
 
+/** The files a report is about: text, not ignored, with at least one target line. */
+function targetFiles(diffs: FileDiff[], cfg: BlindspotConfig): FileDiff[] {
+  return diffs.filter(
+    (d) => !d.binary && !isIgnored(d.file, cfg.ignore) && d.addedLines.length > 0,
+  );
+}
+
+interface EvaluatedLine {
+  line: number;
+  text: string;
+  verdict: RiskVerdict;
+  ev: LineEvidence;
+  signals: EvidenceSignals;
+}
+
+/**
+ * Every target line of one file, classified and judged. The report and the
+ * interactive page both start from this, so they cannot disagree about which
+ * lines exist or what was observed on them.
+ */
+function evaluateLines(diff: FileDiff, sources: ReportSources, cfg: BlindspotConfig): EvaluatedLine[] {
+  const text = sources.getText(diff.file);
+  return diff.addedLines.map((line) => {
+    const lineText = text?.[line - 1] ?? '';
+    const ev = sources.getEvidence(diff.file, line) ?? emptyEvidence();
+    return {
+      line,
+      text: lineText,
+      verdict: classifyLine(diff.file, lineText, cfg),
+      ev,
+      signals: evaluate(ev, cfg, lineText),
+    };
+  });
+}
+
+export interface PageLine {
+  n: number;
+  text: string;
+  risk: RiskLevel;
+  reason: string;
+  ai: boolean;
+  /** Focused time against the acknowledgement time, in [0,1]; 1 is a read. */
+  read: number;
+  signals: Pick<EvidenceSignals, 'visible' | 'focused' | 'dwell' | 'caret' | 'edited' | 'revisit'>;
+}
+
+export interface PageData {
+  weights: SignalWeights;
+  threshold: number;
+  riskWeights: Record<RiskLevel, number>;
+  files: Array<{ path: string; lines: PageLine[] }>;
+}
+
+/**
+ * The evidence behind a report, one row per target line, for the interactive
+ * page. The page re-judges every line in the browser as its threshold moves,
+ * from the same signals `buildReport` judged it by.
+ */
+export function pageData(diffs: FileDiff[], sources: ReportSources, cfg: BlindspotConfig): PageData {
+  const files = targetFiles(diffs, cfg).map((diff) => ({
+    path: diff.file,
+    lines: evaluateLines(diff, sources, cfg).map(({ line, text, verdict, ev, signals }) => ({
+      n: line,
+      text,
+      risk: verdict.level,
+      reason: verdict.reason,
+      ai: isMachineAuthored(ev.provenance),
+      read: signals.readFraction,
+      signals: {
+        visible: signals.visible,
+        focused: signals.focused,
+        dwell: signals.dwell,
+        caret: signals.caret,
+        edited: signals.edited,
+        revisit: signals.revisit,
+      },
+    })),
+  }));
+  return {
+    weights: cfg.weights,
+    threshold: cfg.reviewThresholdPoints,
+    riskWeights: cfg.riskWeights,
+    files,
+  };
+}
+
 export function buildReport(
   diffs: FileDiff[],
   sources: ReportSources,
@@ -74,12 +161,7 @@ export function buildReport(
   let focusSum = 0;
   let effectiveMs = 0;
 
-  for (const diff of diffs) {
-    if (diff.binary) continue;
-    if (isIgnored(diff.file, cfg.ignore)) continue;
-    if (diff.addedLines.length === 0) continue;
-
-    const text = sources.getText(diff.file);
+  for (const diff of targetFiles(diffs, cfg)) {
     const modified = new Set(diff.modifiedLines);
 
     let reviewedLines = 0;
@@ -90,11 +172,7 @@ export function buildReport(
     const risks: RiskLevel[] = [];
     const unseen: Array<{ line: number; risk: RiskLevel; reason: string; ai: boolean }> = [];
 
-    for (const line of diff.addedLines) {
-      const lineText = text?.[line - 1] ?? '';
-      const verdict = classifyLine(diff.file, lineText, cfg);
-      const ev = sources.getEvidence(diff.file, line) ?? emptyEvidence();
-      const signals = evaluate(ev, cfg, lineText);
+    for (const { line, verdict, ev, signals } of evaluateLines(diff, sources, cfg)) {
       const weight = cfg.riskWeights[verdict.level] ?? 1;
       const ai = isMachineAuthored(ev.provenance);
 
