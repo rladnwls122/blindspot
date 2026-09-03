@@ -60,8 +60,8 @@ const RISK_WORD: Record<RiskLevel, string> = {
 };
 
 /** Top-level rows: one summary line, then files in report order (worst first). */
-export function buildTree(report: DiffReport | null): TreeNode[] {
-  if (!report) return [{ kind: 'notice', label: 'Not measuring yet', description: '' }];
+export function buildTree(report: DiffReport | null, note = 'Not measuring yet'): TreeNode[] {
+  if (!report) return [{ kind: 'notice', label: note, description: '' }];
   if (report.totalChangedLines === 0) {
     return [
       {

@@ -63,6 +63,10 @@
 - `Blindspot: Mark Current File As Reviewed` is `Blindspot: Mark File As
   Reviewed`, and accepts a file from the sidebar; `Toggle Unreviewed
   Highlighting` is `Toggle Unread Line Markers`.
+- The periodic refresh — two git processes plus a report rebuild — is skipped
+  while the window is not focused and nothing is unsaved, since no evidence is
+  collected in that state. Regaining focus refreshes immediately, so a commit
+  made in a terminal shows up as soon as you come back.
 
 ### Fixed
 
@@ -74,6 +78,18 @@
   The two now agree, and the README's config example says the real numbers.
 - `npm test` runs on Node 22 as well as 20 (and on Windows): the test files
   are listed by a small runner instead of relying on `node --test <dir>`.
+- A file that was deleted or renamed after the report was built made "Review
+  Blindspot" and the file links fail with a generic error. Both now say the
+  file moved and refresh the report instead of failing on it again.
+- A command that throws now reports its own error message, not VS Code's
+  generic "command failed" naming the id.
+- A controller that failed partway through startup kept its command ids
+  registered, so the fallback handlers could not take them back and VS Code
+  rejected the second registration. The controller now owns and releases
+  everything it registered.
+- Turning `blindspot.enabled` off left the last report on screen in the
+  sidebar and the markers as if it were live. Both now clear, and the sidebar
+  says tracking is off.
 
 ## [0.3.1] — 2026-09-01
 

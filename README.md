@@ -327,15 +327,16 @@ npm run package                              # blindspot-0.3.1.vsix 생성
 code --install-extension blindspot-0.3.1.vsix
 ```
 
-git 저장소가 열려 있으면 바로 상태 표시줄에 커버리지가 뜹니다.
-저장소가 아닌 폴더에서도 명령은 등록되며, 무엇이 없는지 알려 줍니다.
+git 저장소가 열려 있으면 바로 상태 표시줄과 Activity Bar의 Blindspot 뷰에
+커버리지가 뜹니다. 저장소가 아닌 폴더에서도 명령은 등록되며, 무엇이 없는지 알려
+줍니다.
 
 개발하려는 경우:
 
 ```bash
 npm install
 npm run build
-npm test           # 219개 테스트 (모델, CLI, 실제 git 저장소, 그리고 확장 자체)
+npm test           # 221개 테스트 (모델, CLI, 실제 git 저장소, 그리고 확장 자체)
 npm run demo       # 스크립트 세션을 실제 모델로 재생
 npm run demo:page  # demo/index.html 재생성 — 인터랙티브 버전
 npm run icon       # media/icon.png 재생성

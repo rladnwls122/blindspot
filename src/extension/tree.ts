@@ -28,8 +28,8 @@ export class BlindspotTree implements vscode.TreeDataProvider<TreeNode>, vscode.
     });
   }
 
-  update(report: DiffReport | null): void {
-    this.nodes = buildTree(report);
+  update(report: DiffReport | null, note?: string): void {
+    this.nodes = buildTree(report, note);
     if (report) {
       this.view.description = `${MODE_LABEL[report.mode]} · ${baseLabel(report)}`;
       this.view.badge =

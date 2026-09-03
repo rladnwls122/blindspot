@@ -270,15 +270,16 @@ npm run package                              # produces blindspot-0.3.1.vsix
 code --install-extension blindspot-0.3.1.vsix
 ```
 
-Open a git repository and coverage appears in the status bar. Outside one the
-commands still register and tell you what is missing.
+Open a git repository and coverage appears in the status bar, and in the
+Blindspot view in the Activity Bar. Outside one the commands still register and
+tell you what is missing.
 
 To work on it:
 
 ```bash
 npm install
 npm run build
-npm test           # 219 tests: the model, the CLI, a real git repo, the extension
+npm test           # 221 tests: the model, the CLI, a real git repo, the extension
 npm run demo       # replay a scripted session through the real model
 npm run demo:page  # regenerate demo/index.html — the interactive version
 npm run icon       # regenerate media/icon.png

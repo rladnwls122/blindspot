@@ -93,8 +93,12 @@ function makeVscode(): any {
     },
     commands: {
       registerCommand: (id: string, fn: (...args: any[]) => any) => {
+        // Real VS Code refuses a second registration of the same id.
+        if (stub.commands.has(id)) throw new Error(`command '${id}' already exists`);
         stub.commands.set(id, fn);
-        return disposable(() => stub.commands.delete(id));
+        return disposable(() => {
+          if (stub.commands.get(id) === fn) stub.commands.delete(id);
+        });
       },
       executeCommand: (id: string, ...args: any[]) => stub.commands.get(id)?.(...args),
     },
@@ -273,7 +277,42 @@ describe('activation inside a git repository', { concurrency: 1 }, () => {
     assert.equal(stub.errors.length, 1);
     assert.match(stub.errors[0], /could not start/i);
     // And the commands still exist, so the palette explains rather than 404s.
+    // They are the fallback handlers: the failed controller released its ids
+    // (the stub throws on a duplicate registration, as VS Code does), so
+    // running one explains what is wrong instead of driving a dead controller.
     assert.equal(stub.commands.has('blindspot.showReport'), true);
+    await stub.commands.get('blindspot.showReport')!();
+    assert.equal(stub.errors.length, 2, 'the retry fails the same way and says so');
+  });
+
+  test('with tracking disabled, the sidebar says so rather than going stale', async () => {
+    const repo = tempDir();
+    execFileSync('git', ['init', '-q'], { cwd: repo });
+    stub.folders = [{ uri: { fsPath: repo } }];
+    stub.settings['enabled'] = false;
+    await extension.activate(fakeContext());
+
+    const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '../../package.json'), 'utf8'));
+    const view = stub.treeViews.find((v) => v.id === pkg.contributes.views.scm[0].id);
+    assert.ok(view, 'the sidebar is registered');
+    const rows = view!.provider.getChildren();
+    assert.equal(rows.length, 1);
+    assert.match(rows[0].label, /off/i);
+    assert.match(rows[0].label, /blindspot\.enabled/);
+  });
+
+  test('a command that fails says so in its own words', async () => {
+    const repo = tempDir();
+    execFileSync('git', ['init', '-q'], { cwd: repo });
+    stub.folders = [{ uri: { fsPath: repo } }];
+    await extension.activate(fakeContext());
+
+    // The stub has no createWebviewPanel, so reaching the panel is the
+    // failure. It must surface as Blindspot's own message rather than as VS
+    // Code's generic "command failed" naming the id.
+    await stub.commands.get('blindspot.showReport')!();
+    assert.equal(stub.errors.length, 1);
+    assert.match(stub.errors[0], /^Blindspot: .*createWebviewPanel/);
   });
 
   test('toggling the mode writes the workspace setting and flips it back', async () => {

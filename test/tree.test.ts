@@ -121,3 +121,10 @@ describe('labels', () => {
     assert.equal(paceLabel({ attentionMs: 60_000, linesPerMinute: 12.5 }), '≈ 12.5 lines/min');
   });
 });
+
+describe('buildTree without a report', () => {
+  test('says why there is nothing, in the caller\'s words', () => {
+    assert.deepEqual(buildTree(null).map((n) => n.label), ['Not measuring yet']);
+    assert.deepEqual(buildTree(null, 'Tracking is off').map((n) => n.label), ['Tracking is off']);
+  });
+});

@@ -32,22 +32,45 @@ export class Navigator {
     return this.queue.length;
   }
 
-  async next(): Promise<BlindspotHunk | null> {
+  /**
+   * Step to the next hunk without opening it. Kept separate from `reveal` so
+   * the caller can say which file failed to open when it does.
+   */
+  advance(): BlindspotHunk | null {
     if (this.queue.length === 0) return null;
     this.index = (this.index + 1) % this.queue.length;
-    const hunk = this.queue[this.index];
-    await this.reveal(hunk);
+    return this.queue[this.index];
+  }
+
+  async next(): Promise<BlindspotHunk | null> {
+    const hunk = this.advance();
+    if (hunk) await this.reveal(hunk);
     return hunk;
   }
 
-  async reveal(hunk: BlindspotHunk): Promise<void> {
-    const uri = vscode.Uri.file(path.join(this.root, hunk.file));
+  reveal(hunk: BlindspotHunk): Promise<void> {
+    return this.open(hunk.file, hunk.startLine, hunk.endLine, { preserveFocus: false });
+  }
+
+  /**
+   * Open a repo file with a 1-based line range revealed in the centre of the
+   * viewport and the caret parked at its start. Every jump the extension makes
+   * — the navigator, the panel's links, the sidebar rows — comes through here,
+   * so they cannot drift apart in how they clamp or where they land.
+   */
+  async open(
+    file: string,
+    startLine: number,
+    endLine: number,
+    options: vscode.TextDocumentShowOptions = {},
+  ): Promise<void> {
+    const uri = vscode.Uri.file(path.join(this.root, file));
     const doc = await vscode.workspace.openTextDocument(uri);
-    const editor = await vscode.window.showTextDocument(doc, { preserveFocus: false });
+    const editor = await vscode.window.showTextDocument(doc, options);
 
     const lastLine = Math.max(0, doc.lineCount - 1);
-    const start = Math.min(Math.max(0, hunk.startLine - 1), lastLine);
-    const end = Math.min(Math.max(0, hunk.endLine - 1), lastLine);
+    const start = Math.min(Math.max(0, startLine - 1), lastLine);
+    const end = Math.min(Math.max(0, endLine - 1), lastLine);
     const range = new vscode.Range(start, 0, end, doc.lineAt(end).text.length);
 
     editor.revealRange(range, vscode.TextEditorRevealType.InCenter);

@@ -48,6 +48,11 @@
         "icon": "$(graph)"
       },
       {
+        "command": "blindspot.refresh",
+        "title": "Blindspot: Refresh",
+        "icon": "$(refresh)"
+      },
+      {
         "command": "blindspot.reviewBlindspot",
         "title": "Blindspot: Review Blindspot (jump to next unread hunk)",
         "icon": "$(debug-step-over)"
@@ -85,11 +90,6 @@
       {
         "command": "blindspot.completeReview",
         "title": "Blindspot: Complete Review (move baseline to HEAD)"
-      },
-      {
-        "command": "blindspot.refresh",
-        "title": "Blindspot: Refresh",
-        "icon": "$(refresh)"
       }
     ],
     "configuration": {
@@ -98,7 +98,7 @@
         "blindspot.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Track review attention in this workspace."
+          "markdownDescription": "Track review attention in this workspace. [Show Review Report](command:blindspot.showReport) opens the report panel."
         },
         "blindspot.reviewThresholdPoints": {
           "type": "number",
@@ -240,12 +240,6 @@
       }
     },
     "menus": {
-      "scm/title": [
-        {
-          "command": "blindspot.showReport",
-          "group": "navigation"
-        }
-      ],
       "view/title": [
         {
           "command": "blindspot.switchMode",
@@ -266,6 +260,12 @@
           "command": "blindspot.refresh",
           "when": "view == blindspot.files",
           "group": "navigation@4"
+        }
+      ],
+      "scm/title": [
+        {
+          "command": "blindspot.showReport",
+          "group": "navigation"
         }
       ],
       "view/item/context": [

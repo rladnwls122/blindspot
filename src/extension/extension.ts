@@ -20,6 +20,7 @@ import { BlindspotTree } from './tree';
 import { findWorkspace, workspaceFromGit, type WorkspaceContext } from './workspace';
 
 const SAVE_DEBOUNCE_MS = 5000;
+const DISABLED_NOTE = 'Tracking is off (blindspot.enabled)';
 /** Above this a file is not read for the report; a diff in it is not reviewable text. */
 const MAX_FILE_BYTES = 2 * 1024 * 1024;
 
@@ -149,6 +150,14 @@ class Controller implements vscode.Disposable {
   private refreshing = false;
   private lastRefreshError = '';
   private disposed = false;
+  private windowFocused = vscode.window.state.focused;
+  /**
+   * Everything this controller registers with VS Code. Owned here rather than
+   * pushed straight onto `context.subscriptions` so that a controller which
+   * fails partway through startup can release it all — in particular its
+   * command ids, which the fallback handlers must be able to register again.
+   */
+  private readonly subscriptions: vscode.Disposable[] = [];
   private readonly textCache = new Map<
     string,
     { mtimeMs: number; size: number; lines: string[] }
@@ -182,12 +191,11 @@ class Controller implements vscode.Disposable {
 
     this.registerCommands();
 
-    this.context.subscriptions.push(
-      this.statusBar,
-      this.decorations,
-      this.tracker,
-      this.tree,
-      this.commitWatcher,
+    // Seed the focus flag here, not at construction: several awaits have
+    // passed since then, and a focus change in that gap would otherwise leave
+    // the periodic refresh gated on a stale value.
+    this.windowFocused = vscode.window.state.focused;
+    this.subscriptions.push(
       vscode.workspace.onDidChangeConfiguration((e) => {
         if (e.affectsConfiguration('blindspot')) void this.reloadConfig();
       }),
@@ -196,6 +204,13 @@ class Controller implements vscode.Disposable {
       vscode.window.onDidChangeVisibleTextEditors(() =>
         this.decorations.apply(this.report, this.root),
       ),
+      vscode.window.onDidChangeWindowState((s) => {
+        const regained = s.focused && !this.windowFocused;
+        this.windowFocused = s.focused;
+        // Whatever happened in a terminal while we were away shows up now,
+        // not at the next tick.
+        if (regained) void this.refresh();
+      }),
       vscode.languages.registerHoverProvider(
         { scheme: 'file' },
         new EvidenceHover({
@@ -267,14 +282,25 @@ class Controller implements vscode.Disposable {
   private scheduleRefresh(): void {
     const interval = Math.max(1000, this.setting('refreshIntervalMs', 4000));
     if (this.refreshTimer) clearInterval(this.refreshTimer);
-    this.refreshTimer = setInterval(() => void this.refresh(), interval);
+    this.refreshTimer = setInterval(() => void this.tickRefresh(), interval);
+  }
+
+  /**
+   * The periodic refresh. Each one is two git processes plus a rebuild of the
+   * report. While the window is not focused no evidence is being collected, so
+   * unless something is still unsaved there is nothing new to compute — and a
+   * review tool should not be what keeps a laptop fan running in the
+   * background. Regaining focus triggers a refresh straight away.
+   */
+  private tickRefresh(): Promise<DiffReport | null> {
+    if (!this.windowFocused && !this.tracker.isDirty) return Promise.resolve(this.report);
+    return this.refresh();
   }
 
   async refresh(): Promise<DiffReport | null> {
     if (this.disposed || this.refreshing) return this.report;
     if (!this.setting('enabled', true)) {
-      this.statusBar.update(null, false);
-      this.tree.update(null);
+      this.showDisabled();
       return null;
     }
     this.refreshing = true;
@@ -303,6 +329,20 @@ class Controller implements vscode.Disposable {
     } finally {
       this.refreshing = false;
     }
+  }
+
+  /**
+   * `blindspot.enabled` is off. The last report must not stay on screen as if
+   * it were live: the markers clear, and the sidebar says tracking is off
+   * rather than showing numbers nobody is updating.
+   */
+  private showDisabled(): void {
+    this.report = null;
+    this.targets = [];
+    this.navigator.sync(null);
+    this.statusBar.update(null, false);
+    this.decorations.clear();
+    this.tree.update(null, DISABLED_NOTE);
   }
 
   /**
@@ -460,8 +500,22 @@ class Controller implements vscode.Disposable {
   private registerCommands(): void {
     // Fallback handlers own these ids until we replace them.
     disposeFallbackCommands();
+    // A command that throws surfaces as a generic VS Code error naming the
+    // command id. Catch it here so the message says what actually failed.
     const push = (id: string, fn: (...args: any[]) => any) =>
-      this.context.subscriptions.push(vscode.commands.registerCommand(id, fn));
+      this.subscriptions.push(
+        vscode.commands.registerCommand(id, async (...args: any[]) => {
+          try {
+            return await fn(...args);
+          } catch (err) {
+            console.error(`[blindspot] ${id} failed`, err);
+            void vscode.window.showErrorMessage(
+              `Blindspot: ${err instanceof Error ? err.message : String(err)}`,
+            );
+            return undefined;
+          }
+        }),
+      );
 
     push('blindspot.showReport', () => this.showPanel(true));
 
@@ -686,15 +740,23 @@ class Controller implements vscode.Disposable {
 
   /** Reveal a range without letting the jump itself count as reading it. */
   private async openAt(file: string, startLine: number, endLine: number): Promise<void> {
-    const uri = vscode.Uri.file(path.join(this.root, file));
-    const doc = await vscode.workspace.openTextDocument(uri);
-    const editor = await vscode.window.showTextDocument(doc, vscode.ViewColumn.One);
-    const last = Math.max(0, doc.lineCount - 1);
-    const start = Math.min(Math.max(0, startLine - 1), last);
-    const end = Math.min(Math.max(start, endLine - 1), last);
     this.tracker.suppressCaretCredit(800);
-    editor.revealRange(new vscode.Range(start, 0, end, 0), vscode.TextEditorRevealType.InCenter);
-    editor.selection = new vscode.Selection(start, 0, start, 0);
+    try {
+      await this.navigator.open(file, startLine, endLine, { viewColumn: vscode.ViewColumn.One });
+    } catch (err) {
+      await this.couldNotOpen(file, err);
+    }
+  }
+
+  /**
+   * The report is a few seconds old, so the file may have been deleted or
+   * renamed since — or it may be something the editor will not open as text.
+   * Say which, and bring the report up to date so the next jump is current.
+   */
+  private async couldNotOpen(file: string, err: unknown): Promise<void> {
+    const why = err instanceof Error ? err.message : String(err);
+    void vscode.window.showWarningMessage(`Blindspot: could not open ${file} — ${why}`);
+    await this.refresh();
   }
 
   private async reviewNext(): Promise<void> {
@@ -710,8 +772,14 @@ class Controller implements vscode.Disposable {
     }
     // Jumping to a blindspot must not be what marks it as read.
     this.tracker.suppressCaretCredit(800);
-    const hunk = await this.navigator.next();
+    const hunk = this.navigator.advance();
     if (!hunk) return;
+    try {
+      await this.navigator.reveal(hunk);
+    } catch (err) {
+      await this.couldNotOpen(hunk.file, err);
+      return;
+    }
     this.tracker.recordActivity('jumps');
     const severe = hunk.risk === 'critical' || hunk.risk === 'high';
     void vscode.window.setStatusBarMessage(
@@ -814,11 +882,17 @@ class Controller implements vscode.Disposable {
     this.disposed = true;
     if (this.refreshTimer) clearInterval(this.refreshTimer);
     if (this.saveTimer) clearTimeout(this.saveTimer);
-    // Normally VS Code disposes these through context.subscriptions. It cannot
-    // when startup failed before they were registered there, and by then the
-    // tick interval and the file watcher are already running. All of these
-    // are idempotent, so disposing them twice costs nothing and orphaning them
-    // costs a background process nobody can see.
+    for (const d of this.subscriptions.splice(0)) {
+      try {
+        d.dispose();
+      } catch (err) {
+        console.error('[blindspot] dispose failed', err);
+      }
+    }
+    // These may already be running when startup fails partway through: the
+    // tick interval and the file watcher are started before anything is
+    // registered. All of these are idempotent, so disposing them twice costs
+    // nothing and orphaning them costs a background process nobody can see.
     this.tracker?.dispose();
     this.commitWatcher?.dispose();
     this.tree?.dispose();
