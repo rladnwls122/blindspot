@@ -349,10 +349,14 @@ rules — what counts as risky in *this* codebase — go in a committed
 
 ## Where the data lives
 
-`.git/blindspot/state.json` — inside the git directory, so it is per-clone, never
-committed by accident, and deleted with the clone. Review attention is personal
-telemetry about *you*; it must never end up in a shared branch. Nothing leaves
-your machine.
+`.git/blindspot/state.json` when the folder is a git repository — inside the
+git directory, so it is per-clone, never committed by accident, and deleted
+with the clone. A folder opened without git has no `.git` to hide state in, so
+its state lives instead under `~/.blindspot/<hash-of-the-folder-path>/
+state.json`, pruned automatically after 30 days of inactivity but not deleted
+when the folder itself is deleted. Review attention is personal telemetry
+about *you*; it must never end up in a shared branch or leave your machine —
+and in both cases, nothing does.
 
 Evidence is stored against a hash of each line's content, not its line number,
 so inserting an import above a line you read does not hand that credit to a line
