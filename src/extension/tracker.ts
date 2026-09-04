@@ -1,4 +1,3 @@
-import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { BlindspotConfig } from '../core/config';
 import { LineLedger, hasEvidence, type StoredLine } from '../core/ledger';
@@ -6,6 +5,7 @@ import { isIgnored } from '../core/coverage';
 import { attentionNorm, focusLine } from '../core/attention';
 import { emptyActivity, type ActivityCounts, type LineEvidence, type Provenance } from '../core/types';
 import { STATE_VERSION, isForgotten, type AiRegions, type BlindspotState } from '../core/store';
+import { relativeKey } from './paths';
 
 const TICK_MS = 250;
 /**
@@ -124,9 +124,7 @@ export class AttentionTracker implements vscode.Disposable {
   /** Repo-relative key for a URI, or null when it is not a file in this repository. */
   private relKey(uri: vscode.Uri): string | null {
     if (uri.scheme !== 'file') return null;
-    const rel = path.relative(this.ctx.root, uri.fsPath).split(path.sep).join('/');
-    if (!rel || rel.startsWith('..')) return null;
-    return rel;
+    return relativeKey(this.ctx.root, uri.fsPath);
   }
 
   private viewKey(doc: vscode.TextDocument): string {

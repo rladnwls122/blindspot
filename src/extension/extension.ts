@@ -12,6 +12,7 @@ import { Decorations } from './decorations';
 import { EvidenceHover } from './hover';
 import { collectDiff, commitExists, findGitContext, headCommit } from './git';
 import { Navigator } from './navigator';
+import { relativeKey } from './paths';
 import { ReportPanel, type PanelMessage, type PanelView } from './panel';
 import { StatusBar } from './statusbar';
 import { installHook, loadAiRegions, loadConfig, loadState, saveState } from './storage';
@@ -491,9 +492,7 @@ class Controller implements vscode.Disposable {
    */
   private relativePath(uri: vscode.Uri): string | null {
     if (uri.scheme !== 'file') return null;
-    const rel = path.relative(this.root, uri.fsPath).split(path.sep).join('/');
-    if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) return null;
-    return rel;
+    return relativeKey(this.root, uri.fsPath);
   }
 
   // ---------------------------------------------------------------- commands

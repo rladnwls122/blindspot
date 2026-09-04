@@ -1,6 +1,8 @@
 import { test, describe, beforeEach, afterEach, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import Module from 'node:module';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import { DEFAULT_CONFIG } from '../src/core/config';
 import { evaluate } from '../src/core/evidence';
@@ -398,6 +400,44 @@ describe('AttentionTracker', { concurrency: 1 }, () => {
     // The decision outlives the evidence: it is written back with the state.
     assert.deepEqual([...snap.ignored], ['vendor/big']);
     assert.deepEqual([...tracker.forgotten], ['vendor/big']);
+  });
+
+  test('a workspace opened by another of its names is still measured', () => {
+    // The root comes from git, which resolves symlinks; the document path
+    // comes from the editor, which reports the path the folder was opened by.
+    // When they disagree every file looks like it is outside the workspace,
+    // and the tracker records nothing at all without saying so.
+    const base = fs.mkdtempSync(path.join(os.tmpdir(), 'blindspot-tracker-'));
+    const real = path.join(base, 'real');
+    fs.mkdirSync(path.join(real, 'src'), { recursive: true });
+    fs.writeFileSync(path.join(real, 'src', 'a.ts'), 'const a = 1;\n');
+    const opened = path.join(base, 'opened-as');
+    fs.symlinkSync(real, opened, 'junction');
+    try {
+      const doc = {
+        uri: { scheme: 'file', fsPath: path.join(opened, 'src', 'a.ts'), toString: () => 'a' },
+        lineCount: 4,
+        lineAt: (i: number) => ({ text: `line ${i}` }),
+      };
+      const editor = {
+        document: doc,
+        visibleRanges: [{ start: { line: 0 }, end: { line: 3 } }],
+        viewColumn: 1,
+        selection: { active: { line: 0 } },
+      };
+      world.visibleEditors = [editor as never];
+      world.activeEditor = editor as never;
+
+      // The root as git would report it: the resolved one.
+      tracker = new AttentionTracker({ root: real }, DEFAULT_CONFIG, {}, () => {});
+      tracker.start(emptyState());
+      hold(6000);
+
+      assert.deepEqual(tracker.files(), ['src/a.ts'], 'the file is measured, under its real key');
+      assert.equal(tracker.getEvidence('src/a.ts', 1)!.focusedMs > 0, true);
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
   });
 
   test('a forgotten file that is still open does not walk back into the target', () => {

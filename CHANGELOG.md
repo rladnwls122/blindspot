@@ -7,8 +7,8 @@
 Two modes instead of one, a sidebar, a report panel fed by your own session, a
 commit trailer, the line-shape model in full, and a long run of git-plumbing
 fixes — a file name with a non-ASCII character, a submodule bump, a symlink, a
-rename, a linked worktree, two spellings of one directory, and four `diff.*`
-settings that quietly changed what was measured.
+rename, a linked worktree, a workspace opened by a second name, and four
+`diff.*` settings that quietly changed what was measured.
 
 CI runs on development branches now, not only on `main`. It had been failing on
 Windows since 2026-09-02 and no branch met that platform before it was merged,
@@ -132,6 +132,17 @@ which is how three of the fixes above went unnoticed for two days.
 
 ### Fixed
 
+- A workspace opened by another of its names is measured again. Everything here
+  is keyed by a workspace-relative path, and the two halves of that subtraction
+  came from different places: the root from `git rev-parse --show-toplevel`,
+  which resolves symlinks and answers with Windows' long form, and the file
+  from the editor, which reports the path the folder was opened by. Open a
+  project through a symlink or a junction, or by a path holding an 8.3 short
+  name, and every key came out starting with `..` — outside the workspace. The
+  extension then tracked nothing at all, and said nothing, because "that file
+  is not in this workspace" is an ordinary answer. Both sides are canonicalised
+  now, in one shared function rather than the three copies that had drifted
+  apart in the tracker, the controller and the decorations.
 - `blindspot read <path>` and `blindspot forget <path>` now find the path on
   Windows. git always reports the long spelling of a directory and the shell
   reports whatever it was started with, so the same folder is
