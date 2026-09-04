@@ -64,12 +64,26 @@ describe('relativeKey', () => {
     }
   });
 
-  test('a path that does not exist is used as given, not dropped', () => {
-    // A file deleted a moment ago, or the old side of a rename. There is no
-    // canonical spelling to look up and the one we were handed is the answer.
-    const root = tempDir();
-    assert.equal(relativeKey(root, path.join(root, 'gone', 'x.ts')), 'gone/x.ts');
-    fs.rmSync(root, { recursive: true, force: true });
+  test('a path that does not exist is spelled like the ones that do', () => {
+    // A file deleted a moment ago, or the old side of a rename, which is the
+    // one the tracker needs in order to carry evidence across it. Answering
+    // with the spelling we were handed would put the whole problem back for
+    // exactly these paths, so the nearest existing ancestor decides.
+    const base = tempDir();
+    const real = path.join(base, 'real');
+    fs.mkdirSync(real, { recursive: true });
+    const opened = path.join(base, 'opened-as');
+    fs.symlinkSync(real, opened, 'junction');
+    try {
+      assert.equal(relativeKey(real, path.join(opened, 'gone', 'x.ts')), 'gone/x.ts');
+      assert.equal(relativeKey(opened, path.join(real, 'gone', 'x.ts')), 'gone/x.ts');
+      // And with no aliasing at all, the plain answer is unchanged.
+      assert.equal(relativeKey(real, path.join(real, 'gone', 'x.ts')), 'gone/x.ts');
+      // Still outside is still outside, existing or not.
+      assert.equal(relativeKey(path.join(real, 'sub'), path.join(base, 'elsewhere.ts')), null);
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
   });
 });
 

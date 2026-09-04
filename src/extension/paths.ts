@@ -38,10 +38,16 @@ export function canonicalPath(p: string): string {
   try {
     resolved = fs.realpathSync.native(p);
   } catch {
-    // The path does not exist — a file just deleted, a rename's old side. The
-    // spelling we were given is the best answer there is, and it is the one
-    // the caller already had.
-    resolved = p;
+    // Nothing on disk to ask: a file just deleted, the old side of a rename,
+    // a path being named before it exists. Handing back the spelling we were
+    // given would put the original problem straight back for exactly these
+    // paths — a rename in a workspace opened through a symlink would fail to
+    // carry its evidence, which is the case that matters most here. So resolve
+    // the nearest ancestor that does exist and put the rest back on, and a
+    // path that is not there is still spelled like its neighbours that are.
+    const parent = path.dirname(p);
+    // dirname of a filesystem root is itself; without this that recurses.
+    resolved = parent === p ? p : path.join(canonicalPath(parent), path.basename(p));
   }
 
   // The cache is here because this runs on the tick path, where a syscall per
