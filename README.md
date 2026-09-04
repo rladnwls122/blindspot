@@ -323,8 +323,8 @@ provenance는 모델에 대한 추측이 아니라 실제로 관측된 것만 �
 
 ```bash
 npm install
-npm run package                              # blindspot-0.3.1.vsix 생성
-code --install-extension blindspot-0.3.1.vsix
+npm run package                              # blindspot-0.4.0.vsix 생성
+code --install-extension blindspot-0.4.0.vsix
 ```
 
 git 저장소가 열려 있으면 바로 상태 표시줄과 Activity Bar의 Blindspot 뷰에
@@ -466,12 +466,17 @@ demo/            스크립트 세션을 실제 모델로 재생
 
 ## 상태
 
-v0.3.1 이후 미출시 — 두 모드, 인터랙티브 페이지 패널과 사이드바, 마우스 센서,
-interacted/pace가 `main`에 들어가 있습니다. 무엇이 바뀌었는지는
-[`CHANGELOG.md`](CHANGELOG.md)에, 무엇을 더 재고 무엇을 더 만들지 따져 본 기록은
-[`docs/BRAINSTORM.md`](docs/BRAINSTORM.md)에 있습니다. 다음 계획은
-[`docs/PLAN.md`](docs/PLAN.md), 아직 열려 있는 결정은
-[`docs/QUESTIONS.md`](docs/QUESTIONS.md)를 보세요.
+v0.4.0 — 두 모드, 인터랙티브 페이지 패널과 사이드바, 마우스 센서,
+interacted/pace, 커밋 트레일러, `forget`, 그리고 라인 모양 모델 전체.
+무엇이 바뀌었는지는 [`CHANGELOG.md`](CHANGELOG.md)에, 무엇을 더 재고 무엇을 더
+만들지 따져 본 기록은 [`docs/BRAINSTORM.md`](docs/BRAINSTORM.md)에 있습니다.
+다음 계획은 [`docs/PLAN.md`](docs/PLAN.md), 아직 열려 있는 결정은
+[`docs/QUESTIONS.md`](docs/QUESTIONS.md), 배포 절차는
+[`docs/RELEASING.md`](docs/RELEASING.md)를 보세요.
+
+아직 실제 VS Code 창에서 손으로 돌려본 적은 없습니다. 이 컨테이너에 에디터가 없어
+코어·CLI·훅은 진짜 저장소로, 에디터 표면은 스텁 API로 검증했습니다. 그게 이
+확장으로 가장 먼저 할 일이고, [`docs/PLAN.md`](docs/PLAN.md)의 첫 항목입니다.
 
 ## 참고 문헌
 

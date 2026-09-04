@@ -7,7 +7,7 @@ import * as path from 'node:path';
 import { hashLine } from '../src/core/hash';
 import { emptyEvidence } from '../src/core/types';
 import { serializeState, emptyState } from '../src/core/store';
-import { hookScript } from '../src/extension/storage';
+import { hookScript, trailerHookScript } from '../src/extension/storage';
 import type { DiffReport } from '../src/core/types';
 
 /**
@@ -26,22 +26,26 @@ function git(args: string[], cwd = repo, env: NodeJS.ProcessEnv = process.env): 
 }
 
 /**
- * The installed hooks look for `blindspot` on PATH. A shim there that runs
- * this checkout's CLI lets a real `git commit` exercise them end to end.
+ * Install both hooks so that a real `git commit` runs them, using the branch
+ * the hooks take when Blindspot is installed from a `.vsix`: an absolute path
+ * to the bundled CLI, invoked as `node "<path>"`.
+ *
+ * Not the `blindspot`-on-PATH branch. A shim on PATH is one more thing that
+ * has to behave the same in `sh`, in Git Bash and in whatever CI runs, and it
+ * is not the path most users get. This one is: node is what runs the hook
+ * everywhere, and the hook body is the same string `installHook` writes.
  */
-let shimDir: string | null = null;
-function withCliOnPath(): NodeJS.ProcessEnv {
-  if (!shimDir) {
-    shimDir = fs.mkdtempSync(path.join(os.tmpdir(), 'blindspot-bin-'));
-    const posix = (p: string) => p.split(path.sep).join('/');
-    fs.writeFileSync(
-      path.join(shimDir, 'blindspot'),
-      `#!/bin/sh\nexec "${posix(process.execPath)}" "${posix(CLI)}" "$@"\n`,
-      { mode: 0o755 },
-    );
-  }
-  const key = Object.keys(process.env).find((k) => k.toUpperCase() === 'PATH') ?? 'PATH';
-  return { ...process.env, [key]: `${shimDir}${path.delimiter}${process.env[key] ?? ''}`, NO_COLOR: '1' };
+let scratch: string | null = null;
+function tempFile(name: string): string {
+  if (!scratch) scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'blindspot-bin-'));
+  return path.join(scratch, name);
+}
+
+function installBundledHooks(target = repo): void {
+  const hooks = path.join(target, '.git', 'hooks');
+  fs.mkdirSync(hooks, { recursive: true });
+  fs.writeFileSync(path.join(hooks, 'pre-commit'), hookScript(CLI), { mode: 0o755 });
+  fs.writeFileSync(path.join(hooks, 'prepare-commit-msg'), trailerHookScript(CLI), { mode: 0o755 });
 }
 
 function blindspot(args: string[], cwd = repo): { stdout: string; code: number } {
@@ -111,7 +115,7 @@ describe('cli against a real repository', () => {
 
   after(() => {
     if (repo) fs.rmSync(repo, { recursive: true, force: true });
-    if (shimDir) fs.rmSync(shimDir, { recursive: true, force: true });
+    if (scratch) fs.rmSync(scratch, { recursive: true, force: true });
   });
 
   test('a clean tree has nothing to review', () => {
@@ -337,7 +341,8 @@ describe('cli against a real repository', () => {
   });
 
   test('a commit made through the hooks carries the trailer', () => {
-    git(['commit', '-q', '-m', 'feat: sign sessions'], repo, withCliOnPath());
+    installBundledHooks();
+    git(['commit', '-q', '-m', 'feat: sign sessions']);
     const body = git(['log', '-1', '--pretty=%B']);
     assert.match(body, /^feat: sign sessions\n/, 'the subject is untouched');
     assert.match(body, /^Blindspot: 100% \(2\/2 lines unread\)$/m);
@@ -347,18 +352,14 @@ describe('cli against a real repository', () => {
   });
 
   test('a commit with nothing to measure gets no trailer', () => {
-    git(['commit', '-q', '--allow-empty', '-m', 'chore: nothing'], repo, withCliOnPath());
+    git(['commit', '-q', '--allow-empty', '-m', 'chore: nothing']);
     assert.doesNotMatch(git(['log', '-1', '--pretty=%B']), /Blindspot/);
   });
 
   test('a message that already carries a trailer gets it replaced, not doubled', () => {
     write('src/next.ts', ['export const next = true;']);
     git(['add', 'src/next.ts']);
-    git(
-      ['commit', '-q', '-m', 'feat: next', '-m', 'Blindspot: 5% (1/20 lines unread)'],
-      repo,
-      withCliOnPath(),
-    );
+    git(['commit', '-q', '-m', 'feat: next', '-m', 'Blindspot: 5% (1/20 lines unread)']);
     const body = git(['log', '-1', '--pretty=%B']);
     assert.equal(body.match(/^Blindspot:/gm)?.length, 1);
     assert.match(body, /^Blindspot: 100% \(1\/1 lines unread\)$/m, 'the measured value wins');
@@ -386,7 +387,7 @@ describe('cli against a real repository', () => {
       // And a commit made in the worktree runs them.
       fs.writeFileSync(path.join(wt, 'src', 'wt.ts'), 'export const wt = true;\n');
       git(['add', 'src/wt.ts'], wt);
-      git(['commit', '-q', '-m', 'feat: from the worktree'], wt, withCliOnPath());
+      git(['commit', '-q', '-m', 'feat: from the worktree'], wt);
       const value = git(['log', '-1', '--format=%(trailers:key=Blindspot,valueonly)'], wt).trim();
       assert.equal(value, '100% (1/1 lines unread)');
     } finally {
@@ -404,11 +405,11 @@ describe('cli against a real repository', () => {
       // editor here copies the buffer out and aborts the commit.
       write('src/editor.ts', ['export const editor = true;']);
       git(['add', 'src/editor.ts']);
-      const capture = path.join(shimDir as string, 'editor-buffer');
-      const editor = path.join(shimDir as string, 'editor.sh');
+      const capture = tempFile('editor-buffer');
+      const editor = tempFile('editor.sh');
       fs.writeFileSync(editor, `#!/bin/sh\ncp "$1" "${capture}"\nexit 1\n`, { mode: 0o755 });
       try {
-        git(['commit', '-q'], repo, { ...withCliOnPath(), GIT_EDITOR: editor });
+        git(['commit', '-q'], repo, { ...process.env, GIT_EDITOR: editor });
         assert.fail('the aborting editor should have aborted the commit');
       } catch (err: any) {
         assert.equal(err.status, 1);

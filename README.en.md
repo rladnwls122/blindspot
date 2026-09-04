@@ -266,8 +266,8 @@ To use it — build a `.vsix` and install that:
 
 ```bash
 npm install
-npm run package                              # produces blindspot-0.3.1.vsix
-code --install-extension blindspot-0.3.1.vsix
+npm run package                              # produces blindspot-0.4.0.vsix
+code --install-extension blindspot-0.4.0.vsix
 ```
 
 Open a git repository and coverage appears in the status bar, and in the
@@ -409,12 +409,19 @@ validated.
 
 ## Status
 
-Unreleased, after v0.3.1 — the two modes, the interactive page as the panel,
-the sidebar, the mouse sensor, interacted lines and pace are on `main`.
-See [`CHANGELOG.md`](CHANGELOG.md) for what changed and
+v0.4.0 — two modes, the interactive page as the panel, the sidebar, the mouse
+sensor, interacted lines, pace, the commit trailer, `forget`, and the line-shape
+model in full. See [`CHANGELOG.md`](CHANGELOG.md) for what changed and
 [`docs/BRAINSTORM.md`](docs/BRAINSTORM.md) (Korean) for the reasoning about
 what else to measure and build. See [`docs/PLAN.md`](docs/PLAN.md) for what is
-next and [`docs/QUESTIONS.md`](docs/QUESTIONS.md) for the decisions still open.
+next, [`docs/QUESTIONS.md`](docs/QUESTIONS.md) for the decisions still open, and
+[`docs/RELEASING.md`](docs/RELEASING.md) for how a version gets published.
+
+The extension has still never been run by hand in a real VS Code window — this
+container has no editor, so the core, the CLI and the hooks are verified against
+real repositories and the editor surface is verified through a stubbed API. That
+is the first thing to do with it, and the first item in
+[`docs/PLAN.md`](docs/PLAN.md).
 
 ## License
 
