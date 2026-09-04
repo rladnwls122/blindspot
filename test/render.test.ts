@@ -161,7 +161,23 @@ describe('renderScore', () => {
     const r = report({ 'notes.md': { lines: ['hello'], changed: [1] } });
     const text = renderScore(r);
     // Nothing in this diff was machine-written.
-    assert.match(text, /AI-generated\s+—/);
+    assert.match(text, /Machine-written\s+—/);
+  });
+
+  test('colour does not move the value column', () => {
+    // 100% and 67% in one block: the values must still end on the same column
+    // once the escape codes are stripped, or the coloured card is ragged.
+    const r = report({
+      'src/auth/session.ts': { lines: ['const token = sign(x)', 'return token'], changed: [1, 2], read: [1, 2] },
+      'notes.md': { lines: ['hello'], changed: [1] },
+    });
+    const plain = renderScore(r, { color: false }).split('\n');
+    const painted = renderScore(r, { color: true })
+      .split('\n')
+      .map((row) => row.replace(/\u001b\[[0-9;]*m/g, ''));
+    assert.deepEqual(painted, plain);
+    const ends = new Set(plain.filter((row) => /%$/.test(row)).map((row) => visualWidth(row)));
+    assert.equal(ends.size, 1, `ragged values: ${plain.join(' | ')}`);
   });
 });
 

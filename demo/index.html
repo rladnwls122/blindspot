@@ -345,7 +345,7 @@ input[type="range"]::-moz-range-thumb {
 .score-bar { font-family: var(--mono); font-size: 1.1rem; letter-spacing: -0.08em; color: var(--ember); }
 .metrics { display: flex; flex-direction: column; }
 .metric {
-  display: grid; grid-template-columns: 8rem minmax(0,1fr) 3rem;
+  display: grid; grid-template-columns: 9rem minmax(0,1fr) 3rem;
   gap: 14px; align-items: center; padding: 10px 0; border-top: 1px solid var(--rule);
 }
 .metric:last-child { border-bottom: 1px solid var(--rule); }
@@ -684,7 +684,7 @@ footer {
         구분 불가), <code>declared-ai</code>(도구가 명시적으로 선언)뿐이다. 그래서 코드
         안에서는 <code>machine-written</code>이라 부른다.
       </p>
-      <p class="default">UI에는 "AI-generated"로 표기 중 · 과장이라고 보면 bulk를 버킷에서 빼면 됨 (한 줄)</p>
+      <p class="default">UI도 이제 <code>Machine-written</code> · 붙여넣기까지 세는 게 과장이라고 보면 bulk를 버킷에서 빼면 됨 (한 줄)</p>
     </div>
     <div class="q">
       <span class="k">Q6 · 확장 범위</span>
@@ -1011,7 +1011,7 @@ function renderScore() {
     ['Coverage', s.coverage, true],
     ['Critical', s.critical, s.measured.critical],
     ['New code', s.newCode, s.measured.newCode],
-    ['AI-generated', s.ai, s.measured.ai],
+    ['Machine-written', s.ai, s.measured.ai],
   ];
   $('metrics').innerHTML = rows.map(([label, v, measured]) => {
     const cls = !measured ? '' : v >= 0.9 ? '' : v >= 0.5 ? 'low' : 'crit';

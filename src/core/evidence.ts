@@ -137,7 +137,7 @@ export function strongerProvenance(a: Provenance, b: Provenance): Provenance {
   return PROVENANCE_RANK[a] >= PROVENANCE_RANK[b] ? a : b;
 }
 
-/** True when the line should be counted in the AI-generated bucket. */
+/** True when the line belongs in the machine-written bucket. */
 export function isMachineAuthored(p: Provenance): boolean {
   return p === 'bulk' || p === 'declared-ai';
 }

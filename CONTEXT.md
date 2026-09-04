@@ -39,7 +39,7 @@ A read line the person also touched — caret, mouse rest, or keystroke — as o
 _Avoid_: active line, confirmed line
 
 **Machine-written line**:
-A line that arrived in bulk rather than a keystroke at a time, or that a tool declared as agent-written. The honest name: an editor cannot know that a language model wrote a line. The interface currently says "AI-generated", which claims more than this.
+A line that arrived in bulk rather than a keystroke at a time, or that a tool declared as agent-written. The honest name: an editor cannot know that a language model wrote a line, so the interface says this too and never "AI-generated", which would claim more.
 _Avoid_: AI line, generated line, LLM code
 
 **Risk**:

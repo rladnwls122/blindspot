@@ -238,10 +238,10 @@ Review Score
 
 █████░░░░░ 49
 
-Coverage       64%
-Critical       24%     ← this is why the score is 49 and not 64
-New code       64%
-AI-generated   48%
+Coverage         64%
+Critical         24%     ← this is why the score is 49 and not 64
+New code         64%
+Machine-written  48%
 ```
 
 Components with nothing to measure are dropped and their weight is redistributed,

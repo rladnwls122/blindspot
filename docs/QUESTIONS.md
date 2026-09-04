@@ -97,9 +97,14 @@ CLI의 Reading 블록에 "N lines removed, not measured". 점수는 그대로.
 - `unknown`
 
 그래서 코드 안에서는 "AI"라고 단정하지 않고 `machine-written`으로 부른다. UI에는
-"AI-generated"로 나가는데 — **이 두 단어가 다른 게 신경 쓰이면 말해줘.**
+"AI-generated"로 나가고 있었는데 — **이 두 단어가 다른 게 신경 쓰이면 말해줘.**
 붙여넣기까지 AI로 세는 게 과장이라고 보면 `bulk`를 AI 버킷에서 빼고
 `declared-ai`만 세도 된다 (한 줄 수정).
+
+→ **표기는 통일됨.** Review Score의 행 이름이 CLI·패널·데모 모두 `Machine-written`
+이다 (`CONTEXT.md`의 용어). 사이드바와 호버는 원래부터 그렇게 말하고 있었다.
+버킷의 정의(bulk + declared-ai)는 그대로이고, bulk를 빼는 건 여전히 별개의
+결정이다.
 
 ## Q6. 저자 vs 리뷰어 — 누구의 blindspot을 재는 건가
 

@@ -113,7 +113,7 @@ export function renderScore(report: DiffReport, opts: RenderOptions = {}): strin
   rows.push(metric('Coverage', s.coverage, true, opts));
   rows.push(metric('Critical', s.critical, s.measured.critical, opts));
   rows.push(metric('New code', s.newCode, s.measured.newCode, opts));
-  rows.push(metric('AI-generated', s.ai, s.measured.ai, opts));
+  rows.push(metric('Machine-written', s.ai, s.measured.ai, opts));
   return rows.join('\n');
 }
 
@@ -123,7 +123,8 @@ function metric(label: string, value: number, measured: boolean, opts: RenderOpt
     measured && opts.color
       ? paint(text, value >= 0.9 ? ANSI.green : value >= 0.7 ? ANSI.yellow : ANSI.red, true)
       : text;
-  return `${padEnd(label, 14)}${padStart(colored, opts.color && measured ? text.length + 9 : 4)}`;
+  // Right-align on the visible text, so colour codes cannot shift the column.
+  return `${padEnd(label, 16)}${padStart('', 4 - visualWidth(text))}${colored}`;
 }
 
 /**

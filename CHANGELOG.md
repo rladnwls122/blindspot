@@ -54,6 +54,11 @@
 
 ### Changed
 
+- The Review Score row that said `AI-generated` now says `Machine-written`, in
+  the CLI, the report panel and the demo alike. The sidebar and the hover
+  already used that name, and it is the honest one: an editor can see that a
+  line arrived in bulk or was declared by a tool, not that a model wrote it.
+  What the bucket counts is unchanged.
 - `Blindspot: Show Review Report` now opens the interactive page that used to
   be the demo (`demo/index.html`), fed the evidence of your own session: the
   threshold slider re-judges every line of the current target in the browser,

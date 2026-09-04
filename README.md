@@ -295,10 +295,10 @@ Review Score
 
 █████░░░░░ 49
 
-Coverage       64%
-Critical       24%     ← 점수가 64가 아니라 49인 이유
-New code       64%
-AI-generated   48%
+Coverage         64%
+Critical         24%     ← 점수가 64가 아니라 49인 이유
+New code         64%
+Machine-written  48%
 ```
 
 측정할 대상이 없는 항목은 빠지고 가중치는 나머지에 재분배됩니다.
