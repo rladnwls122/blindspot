@@ -132,6 +132,14 @@ which is how three of the fixes above went unnoticed for two days.
 
 ### Fixed
 
+- Nothing was slow, and that is now checked. `docs/PLAN.md` left open whether a
+  500-file diff could be re-measured every four seconds or whether the diff
+  would have to be cached; it takes 324 ms end to end, 8% of the interval, so
+  the cache was never needed. `test/scale.test.ts` keeps the answer honest, and
+  pins the property that actually matters: each file's text is fetched exactly
+  once per pass. In the editor that fetch is a read from disk, so a change that
+  reads twice would double the I/O of a background task and show up in no other
+  test.
 - A folder that is not a repository keeps one reading history, however it was
   opened. Its evidence lives under `~/.blindspot/<hash of the folder's path>`,
   and a folder reached through a symlink, a junction or an 8.3 short name
