@@ -5,8 +5,8 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { findWorkspace, workspaceWithoutGit } from '../src/extension/workspace';
-import { loadMeta, metaPath, saveState } from '../src/extension/storage';
-import { emptyState } from '../src/core/store';
+import { loadMeta, loadState, metaPath, saveState } from '../src/extension/storage';
+import { emptyState, serializeState } from '../src/core/store';
 
 /**
  * Reading code needs a folder, not a repository. What differs between the two
@@ -78,6 +78,73 @@ describe('findWorkspace', () => {
     assert.equal(canonical(ws.root), canonical(dir));
     assert.equal(ws.stateDir.startsWith(path.resolve(dir)), false);
     assert.equal(ws.stateDir.startsWith(path.join(os.homedir(), '.blindspot')), true);
+  });
+
+  test('a folder reached by two names keeps one reading history', () => {
+    // The hash decides where the evidence lives. Reached through a symlink,
+    // a junction, or an 8.3 short name, the same project hashed to two
+    // different directories, and opening it the other way looked exactly
+    // like never having read any of it.
+    const base = tempDir();
+    const real = path.join(base, 'project');
+    fs.mkdirSync(real);
+    const alias = path.join(base, 'reached-another-way');
+    fs.symlinkSync(real, alias, 'junction');
+    try {
+      const direct = workspaceWithoutGit(real, '/home/x');
+      const viaLink = workspaceWithoutGit(alias, '/home/x');
+      assert.equal(direct.stateDir, viaLink.stateDir);
+      assert.equal(canonical(direct.root), canonical(viaLink.root));
+      // A different folder is still a different history.
+      const other = path.join(base, 'other');
+      fs.mkdirSync(other);
+      assert.notEqual(workspaceWithoutGit(other, '/home/x').stateDir, direct.stateDir);
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+  test('reading recorded before the folder was named canonically is still found', async () => {
+    // Canonicalising moves where the state is kept, for everyone and not only
+    // for the aliased. An upgrade that quietly dropped somebody's reading
+    // would be this tool telling them they had read nothing.
+    const home = tempDir();
+    const base = tempDir();
+    const real = path.join(base, 'project');
+    fs.mkdirSync(real);
+    const alias = path.join(base, 'reached-another-way');
+    fs.symlinkSync(real, alias, 'junction');
+    try {
+      const ws = workspaceWithoutGit(alias, home);
+      assert.notEqual(ws.legacyStateDir, null, 'the old place is a different one here');
+
+      // Write a state where the previous version would have put it.
+      const before = emptyState();
+      before.trackedMs = 4242;
+      fs.mkdirSync(ws.legacyStateDir!, { recursive: true });
+      fs.writeFileSync(path.join(ws.legacyStateDir!, 'state.json'), serializeState(before));
+
+      const loaded = await loadState(ws);
+      assert.equal(loaded.trackedMs, 4242, 'the reading survives the move');
+
+      // Saving puts it in the new place, and that one wins from then on.
+      loaded.trackedMs = 9999;
+      await saveState(ws, loaded);
+      assert.equal(fs.existsSync(path.join(ws.stateDir, 'state.json')), true);
+      assert.equal((await loadState(ws)).trackedMs, 9999);
+      // The old file is left alone rather than deleted: nothing is lost if
+      // this version is rolled back.
+      assert.equal(fs.existsSync(path.join(ws.legacyStateDir!, 'state.json')), true);
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+      fs.rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test('a repository has no older place to look', () => {
+    const repo = tempDir();
+    execFileSync('git', ['init', '-q'], { cwd: repo });
+    return findWorkspace(repo).then((ws) => assert.equal(ws.legacyStateDir, null));
   });
 
   test('the same folder always maps to the same state directory, regardless of case', () => {

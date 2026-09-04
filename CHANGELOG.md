@@ -132,6 +132,15 @@ which is how three of the fixes above went unnoticed for two days.
 
 ### Fixed
 
+- A folder that is not a repository keeps one reading history, however it was
+  opened. Its evidence lives under `~/.blindspot/<hash of the folder's path>`,
+  and a folder reached through a symlink, a junction or an 8.3 short name
+  hashed to a second directory: open the project the other way and it looked
+  exactly like never having read any of it. The hash is taken over the folder's
+  canonical name now. That moves where the state is kept for everyone, not only
+  for the aliased, so the old location is still read from when the new one is
+  empty — read from, never written to and never deleted, so rolling back this
+  version loses nothing.
 - A workspace opened by another of its names is measured again. Everything here
   is keyed by a workspace-relative path, and the two halves of that subtraction
   came from different places: the root from `git rev-parse --show-toplevel`,

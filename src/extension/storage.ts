@@ -74,12 +74,22 @@ async function saveMeta(ctx: WorkspaceContext, now: number): Promise<void> {
 }
 
 export async function loadState(ctx: WorkspaceContext): Promise<BlindspotState> {
-  try {
-    const raw = await fs.readFile(statePath(ctx), 'utf8');
-    return pruneState(parseState(raw), PRUNE_AFTER_MS);
-  } catch {
-    return emptyState();
+  const places = [ctx.stateDir];
+  // Where an older version of this extension kept the same folder's state.
+  // Only read from, and only when the current place has nothing: an upgrade
+  // that silently threw away someone's reading would be indistinguishable
+  // from the tool deciding they had never read anything.
+  if (ctx.legacyStateDir) places.push(ctx.legacyStateDir);
+
+  for (const dir of places) {
+    try {
+      const raw = await fs.readFile(path.join(dir, STATE_FILE), 'utf8');
+      return pruneState(parseState(raw), PRUNE_AFTER_MS);
+    } catch {
+      // Not there, or unreadable. Try the next place, then start empty.
+    }
   }
+  return emptyState();
 }
 
 /**
