@@ -4,7 +4,9 @@ import Module from 'node:module';
 import * as path from 'node:path';
 import { DEFAULT_CONFIG } from '../src/core/config';
 import { evaluate } from '../src/core/evidence';
+import { hashLine } from '../src/core/hash';
 import { emptyState } from '../src/core/store';
+import { emptyEvidence } from '../src/core/types';
 
 /**
  * The collector, driven through a fake editor and a fake clock.
@@ -51,6 +53,7 @@ const vscodeStub = {
   workspace: {
     onDidChangeTextDocument: () => noop,
     onDidCloseTextDocument: () => noop,
+    onDidRenameFiles: () => noop,
   },
   TextDocumentChangeReason: { Undo: 1, Redo: 2 },
 };
@@ -312,5 +315,66 @@ describe('AttentionTracker', { concurrency: 1 }, () => {
     const snap = tracker.snapshot(() => undefined);
     assert.equal(snap.activity.jumps, 2);
     assert.equal(snap.baseline?.commit.length, 40);
+  });
+
+  test('a renamed file keeps the reading recorded under its old name', () => {
+    const state = emptyState();
+    state.files['src/old.ts'] = [
+      {
+        h: hashLine('line 0'),
+        i: 0,
+        e: { ...emptyEvidence(), visibleMs: 5000, focusedMs: 5000, dwellEvents: 1, caretHits: 1 },
+      },
+    ];
+    tracker = new AttentionTracker({ root: ROOT }, DEFAULT_CONFIG, {}, () => {});
+    tracker.start(state);
+
+    tracker.followRename('src/old.ts', 'src/new.ts');
+    tracker.primeFromText('src/new.ts', ['line 0', 'line 1']);
+
+    assert.equal(tracker.getEvidence('src/new.ts', 1)?.focusedMs, 5000, 'the line kept its evidence');
+    assert.deepEqual(tracker.files(), ['src/new.ts'], 'nothing is left under the old name');
+  });
+
+  test('a folder rename carries every file beneath it, and only those', () => {
+    const state = emptyState();
+    const e = { ...emptyEvidence(), focusedMs: 3000 };
+    state.files['src/a/x.ts'] = [{ h: hashLine('x'), i: 0, e }];
+    state.files['src/a/deep/y.ts'] = [{ h: hashLine('y'), i: 0, e }];
+    // A sibling whose name merely starts the same way.
+    state.files['src/ab.ts'] = [{ h: hashLine('z'), i: 0, e }];
+    tracker = new AttentionTracker({ root: ROOT }, DEFAULT_CONFIG, {}, () => {});
+    tracker.start(state);
+
+    tracker.followRename('src/a', 'src/b');
+
+    assert.deepEqual(tracker.files().sort(), ['src/ab.ts', 'src/b/deep/y.ts', 'src/b/x.ts']);
+  });
+
+  test('evidence that lands on a name already open is saved, then merged, not lost', () => {
+    const state = emptyState();
+    state.files['src/old.ts'] = [
+      { h: hashLine('line 0'), i: 0, e: { ...emptyEvidence(), humanEdits: 2, focusedMs: 100 } },
+    ];
+    tracker = new AttentionTracker({ root: ROOT }, DEFAULT_CONFIG, {}, () => {});
+    tracker.start(state);
+    // new.ts is open and already has a ledger of its own.
+    tracker.markReviewed('src/new.ts', 2);
+
+    tracker.followRename('src/old.ts', 'src/new.ts');
+
+    // Saved before anything anchored the moved evidence: it rides along.
+    const snap = tracker.snapshot(() => ['line 0', 'line 1']);
+    assert.equal(
+      snap.files['src/new.ts'].some((l: { e: { humanEdits: number } }) => l.e.humanEdits === 2),
+      true,
+      'the moved evidence survives a snapshot',
+    );
+    assert.equal('src/old.ts' in snap.files, false);
+
+    // Touched: it is anchored to the text and folded into the open ledger.
+    tracker.primeFromText('src/new.ts', ['line 0', 'line 1']);
+    assert.equal(tracker.getEvidence('src/new.ts', 1)?.humanEdits, 2);
+    assert.equal(tracker.files().includes('src/old.ts'), false);
   });
 });

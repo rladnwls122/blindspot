@@ -86,6 +86,13 @@
 
 ### Fixed
 
+- Renaming a file or folder in the editor no longer forgets that you read it.
+  Evidence is keyed by path, so a rename stranded everything recorded under the
+  old name: in Reading mode the file vanished from the report, and it came back
+  entirely unread. The tracker now follows the editor's rename event and moves
+  the evidence with the lines — a folder rename carries every file beneath it,
+  and evidence that arrives under a name already open is anchored and merged
+  rather than dropped.
 - A submodule bump or a symlink retarget no longer shows up as an unread line.
   Their diff "lines" are a commit hash and a link target, nothing an editor
   opens, so the report carried an unread line that could never be cleared and
