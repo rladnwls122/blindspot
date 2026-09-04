@@ -90,7 +90,11 @@ describe('relativeKey', () => {
 describe('canonicalPath', () => {
   beforeEach(() => clearPathCache());
 
-  test('resolves a link, and answers unresolvable paths with themselves', () => {
+  test('resolves a link, and a missing path through its nearest existing parent', () => {
+    // Not "answers with itself": a path with nothing on disk to ask about is
+    // still spelled the way its neighbours are, or a rename's old side would
+    // be the one path the fix never reached. On Windows this is the visible
+    // difference — the parent's short name expands, the missing leaf does not.
     const base = tempDir();
     const real = path.join(base, 'real');
     fs.mkdirSync(real);
@@ -98,8 +102,15 @@ describe('canonicalPath', () => {
     fs.symlinkSync(real, link, 'junction');
     try {
       assert.equal(canonicalPath(link), canonicalPath(real));
-      const missing = path.join(base, 'no-such-thing');
-      assert.equal(canonicalPath(missing), missing);
+      assert.equal(
+        canonicalPath(path.join(base, 'no-such-thing')),
+        path.join(canonicalPath(base), 'no-such-thing'),
+      );
+      // Several missing segments deep, and the walk still terminates.
+      assert.equal(
+        canonicalPath(path.join(link, 'a', 'b', 'c.ts')),
+        path.join(canonicalPath(real), 'a', 'b', 'c.ts'),
+      );
     } finally {
       fs.rmSync(base, { recursive: true, force: true });
     }
@@ -107,7 +118,7 @@ describe('canonicalPath', () => {
 
   test('caching does not outlive a directory it resolved', () => {
     // The cache exists because this runs on the tick path. It must not be the
-    // reason a stale answer survives a test, or a session, that moves things.
+    // reason a stale answer survives a session that moves things about.
     const base = tempDir();
     const real = path.join(base, 'real');
     fs.mkdirSync(real);
@@ -117,7 +128,11 @@ describe('canonicalPath', () => {
 
     fs.rmSync(link);
     clearPathCache();
-    assert.equal(canonicalPath(link), link, 'gone, so it is its own answer again');
+    assert.equal(
+      canonicalPath(link),
+      path.join(canonicalPath(base), 'link'),
+      'the link is gone, so its parent decides how it is spelled',
+    );
     fs.rmSync(base, { recursive: true, force: true });
   });
 });
