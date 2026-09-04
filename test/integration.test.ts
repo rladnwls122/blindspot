@@ -364,6 +364,37 @@ describe('cli against a real repository', () => {
     assert.match(body, /^Blindspot: 100% \(1\/1 lines unread\)$/m, 'the measured value wins');
   });
 
+  test('in a linked worktree the hooks go where git runs them, not into the worktree', () => {
+    // A linked worktree has a git directory of its own, but git runs hooks
+    // from the common one. Writing into .git/worktrees/<name>/hooks installs
+    // a hook that never runs — silently, which is the worst outcome a hook
+    // installer can have.
+    const wt = fs.mkdtempSync(path.join(os.tmpdir(), 'blindspot-wt-'));
+    fs.rmSync(wt, { recursive: true, force: true });
+    git(['worktree', 'add', '-q', wt, '-b', 'feature']);
+    try {
+      const { stdout, code } = blindspot(['install-hook', '--trailer'], wt);
+      assert.equal(code, 0);
+      // The shared repository already has both hooks: they are found, not duplicated.
+      assert.equal(stdout.match(/hook present/g)?.length, 2, stdout);
+      assert.equal(
+        fs.existsSync(path.join(repo, '.git', 'worktrees', path.basename(wt), 'hooks')),
+        false,
+        'nothing written into the worktree git directory',
+      );
+
+      // And a commit made in the worktree runs them.
+      fs.writeFileSync(path.join(wt, 'src', 'wt.ts'), 'export const wt = true;\n');
+      git(['add', 'src/wt.ts'], wt);
+      git(['commit', '-q', '-m', 'feat: from the worktree'], wt, withCliOnPath());
+      const value = git(['log', '-1', '--format=%(trailers:key=Blindspot,valueonly)'], wt).trim();
+      assert.equal(value, '100% (1/1 lines unread)');
+    } finally {
+      git(['worktree', 'remove', '--force', wt]);
+      git(['branch', '-D', 'feature']);
+    }
+  });
+
   test(
     'with the editor about to open, the trailer leaves the subject line free',
     { skip: process.platform === 'win32' && 'the editor shim is a shell script' },

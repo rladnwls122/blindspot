@@ -86,6 +86,11 @@
 
 ### Fixed
 
+- `install-hook` in a linked worktree (`git worktree add`) now installs where
+  git runs hooks. It wrote into the worktree's own git directory,
+  `.git/worktrees/<name>/hooks`, which git never reads — the hook was
+  reported as installed and never ran once. The hooks directory now comes from
+  `git rev-parse --git-path hooks`, which also covers `core.hooksPath`.
 - Renaming a file or folder in the editor no longer forgets that you read it.
   Evidence is keyed by path, so a rename stranded everything recorded under the
   old name: in Reading mode the file vanished from the report, and it came back

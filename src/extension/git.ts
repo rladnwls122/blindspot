@@ -16,9 +16,10 @@ export interface GitContext {
   gitDir: string;
   /**
    * Absolute path to the directory git actually runs hooks from. Not always
-   * `<gitDir>/hooks`: `core.hooksPath` moves it, and husky moves it by default.
-   * Writing to the wrong one installs a hook that silently never runs, which
-   * is worse than not installing one at all.
+   * `<gitDir>/hooks`: `core.hooksPath` moves it (husky does so by default),
+   * and a linked worktree's own git directory never holds hooks at all — they
+   * live in the common one. Writing to the wrong place installs a hook that
+   * silently never runs, which is worse than not installing one at all.
    */
   hooksDir: string;
 }
@@ -40,6 +41,16 @@ export async function findGitContext(cwd: string): Promise<GitContext | null> {
 }
 
 async function resolveHooksDir(cwd: string, root: string, gitDir: string): Promise<string> {
+  try {
+    // Ask git rather than guess: `--git-path hooks` is the directory it will
+    // run hooks from, with `core.hooksPath` and a linked worktree's common
+    // directory both accounted for. It comes back relative to `cwd` (or
+    // absolute), never relative to anything else.
+    const answered = (await git(cwd, ['rev-parse', '--git-path', 'hooks'])).trim();
+    if (answered) return path.resolve(cwd, answered);
+  } catch {
+    // Fall through to working it out by hand.
+  }
   try {
     const configured = (await git(cwd, ['config', '--get', 'core.hooksPath'])).trim();
     // git resolves a relative core.hooksPath against the working tree root.
