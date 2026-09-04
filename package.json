@@ -2,7 +2,7 @@
   "name": "blindspot",
   "displayName": "Blindspot",
   "description": "Tracks which lines of your diff your eyes have actually rested on, and tells you what you never read before you commit.",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "license": "MIT",
   "publisher": "rladnwls122",
   "icon": "media/icon.png",
@@ -345,5 +345,10 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/rladnwls122/blindspot.git"
-  }
+  },
+  "bugs": {
+    "url": "https://github.com/rladnwls122/blindspot/issues"
+  },
+  "homepage": "https://github.com/rladnwls122/blindspot#readme",
+  "qna": "https://github.com/rladnwls122/blindspot/issues"
 }

@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-09-04
+
+Two modes instead of one, a sidebar, a report panel fed by your own session, a
+commit trailer, the line-shape model in full, and a long run of git-plumbing
+fixes — a file name with a non-ASCII character, a submodule bump, a symlink, a
+rename, a linked worktree, and four `diff.*` settings that quietly changed what
+was measured.
+
 ### Added
 
 - **Two modes, switchable.** `Diff` measures the lines you changed; `Reading`

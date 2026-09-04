@@ -16,12 +16,12 @@ right before you commit, how much of it you never read.
 ┌─────────────────────────────────┐
 │     BLINDSPOT                   │
 │                                 │
-│ Review coverage     64%         │
-│ Blindspot           36% ⚠       │
+│ Review coverage     55%         │
+│ Blindspot           45% ⚠       │
 │                                 │
 │  182 changed lines              │
-│  116 reviewed                   │
-│   66 unseen                     │
+│  101 reviewed                   │
+│   81 unseen                     │
 │                                 │
 │ ⚠ CRITICAL                      │
 │ src/auth/session.ts             │
@@ -236,12 +236,12 @@ The composite **Review Score** is coverage weighted by what the coverage was *of
 ```
 Review Score
 
-█████░░░░░ 49
+████░░░░░░ 43
 
-Coverage         64%
-Critical         24%     ← this is why the score is 49 and not 64
-New code         64%
-Machine-written  48%
+Coverage         55%
+Critical         21%     ← this is why the score is 43 and not 55
+New code         55%
+Machine-written  43%
 ```
 
 Components with nothing to measure are dropped and their weight is redistributed,

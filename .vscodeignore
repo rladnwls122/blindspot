@@ -3,6 +3,7 @@
 scripts/**
 *.vsix
 README.en.md
+CONTEXT.md
 node_modules/**
 src/**
 test/**

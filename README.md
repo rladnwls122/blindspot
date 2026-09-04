@@ -16,12 +16,12 @@ diff의 각 줄에 당신의 시선이 실제로 머물렀는지를 IDE 이벤�
 ┌─────────────────────────────────┐
 │     BLINDSPOT                   │
 │                                 │
-│ Review coverage     64%         │
-│ Blindspot           36% ⚠       │
+│ Review coverage     55%         │
+│ Blindspot           45% ⚠       │
 │                                 │
 │  182 changed lines              │
-│  116 reviewed                   │
-│   66 unseen                     │
+│  101 reviewed                   │
+│   81 unseen                     │
 │                                 │
 │ ⚠ CRITICAL                      │
 │ src/auth/session.ts             │
@@ -293,12 +293,12 @@ critical 파일 안의 주석은 한 단계 강등됩니다. 주석에 auth 버�
 ```
 Review Score
 
-█████░░░░░ 49
+████░░░░░░ 43
 
-Coverage         64%
-Critical         24%     ← 점수가 64가 아니라 49인 이유
-New code         64%
-Machine-written  48%
+Coverage         55%
+Critical         21%     ← 점수가 55가 아니라 43인 이유
+New code         55%
+Machine-written  43%
 ```
 
 측정할 대상이 없는 항목은 빠지고 가중치는 나머지에 재분배됩니다.
