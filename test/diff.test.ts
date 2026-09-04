@@ -176,6 +176,79 @@ index 9405325..6fe8acc 100644
     assert.deepEqual(file.addedLines, [2]);
   });
 
+  test('a submodule bump is not a line anyone can read', () => {
+    // Verbatim: the superproject's view of vendor/lib moving to a new commit.
+    const diff = `diff --git a/vendor/lib b/vendor/lib
+index a83f7f4..e90483d 160000
+--- a/vendor/lib
++++ b/vendor/lib
+@@ -1 +1 @@
+-Subproject commit a83f7f4764b6d6b4252d24ce97fff5f69a1daef4
++Subproject commit e90483d7800fd2280f4e8809a8e48a5d0e0d3929
+`;
+    assert.deepEqual(parseUnifiedDiff(diff), []);
+  });
+
+  test('a new submodule is not a line either', () => {
+    const diff = `diff --git a/vendor/lib b/vendor/lib
+new file mode 160000
+index 0000000..e90483d
+--- /dev/null
++++ b/vendor/lib
+@@ -0,0 +1 @@
++Subproject commit e90483d7800fd2280f4e8809a8e48a5d0e0d3929
+`;
+    assert.deepEqual(parseUnifiedDiff(diff), []);
+  });
+
+  test('a symlink retarget is a link, not text', () => {
+    // Verbatim: link.ts pointed at real.ts, now at other.ts.
+    const diff = `diff --git a/link.ts b/link.ts
+index 06e3cef..4bc53cb 120000
+--- a/link.ts
++++ b/link.ts
+@@ -1 +1 @@
+-real.ts
+\\ No newline at end of file
++other.ts
+\\ No newline at end of file
+`;
+    assert.deepEqual(parseUnifiedDiff(diff), []);
+  });
+
+  test('a symlink that became a real file is text now, and measured', () => {
+    const diff = `diff --git a/link.ts b/link.ts
+old mode 120000
+new mode 100644
+index 06e3cef..9daeafb
+--- a/link.ts
++++ b/link.ts
+@@ -1 +1,2 @@
+-real.ts
++const a = 1;
++const b = 2;
+`;
+    const [file] = parseUnifiedDiff(diff);
+    assert.equal(file.file, 'link.ts');
+    assert.deepEqual(file.addedLines, [1, 2]);
+  });
+
+  test('a regular file that became a symlink is dropped', () => {
+    const diff = `diff --git a/link.ts b/link.ts
+old mode 100644
+new mode 120000
+index 9daeafb..06e3cef
+--- a/link.ts
++++ b/link.ts
+@@ -1,2 +1 @@
+-const a = 1;
+-const b = 2;
++real.ts
+\\ No newline at end of file
+`;
+    assert.deepEqual(parseUnifiedDiff(diff), []);
+  });
+
   test('a binary rename has only the header and "rename to" to name the file', () => {
     const diff = `diff --git a/logo.png "b/\\353\\241\\234\\352\\263\\240.png"
 similarity index 60%

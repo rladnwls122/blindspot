@@ -444,6 +444,48 @@ describe('cli against a real repository', () => {
     git(['checkout', '--', file]);
   });
 
+  test('a commit that only bumps a submodule has nothing to read', () => {
+    // A superproject with one file and one submodule; the submodule moves to
+    // an older commit, which is the only change. Before the parser knew what
+    // a gitlink was this reported one unread line and 0% coverage.
+    const base = fs.mkdtempSync(path.join(os.tmpdir(), 'blindspot-sub-'));
+    const lib = path.join(base, 'lib');
+    const app = path.join(base, 'app');
+    try {
+      fs.mkdirSync(lib);
+      git(['init', '-q', '-b', 'main'], lib);
+      git(['config', 'user.email', 'test@example.com'], lib);
+      git(['config', 'user.name', 'Test'], lib);
+      fs.writeFileSync(path.join(lib, 'a.txt'), 'one\n');
+      git(['add', '-A'], lib);
+      git(['commit', '-q', '-m', 'one'], lib);
+      fs.writeFileSync(path.join(lib, 'a.txt'), 'one\ntwo\n');
+      git(['commit', '-q', '-am', 'two'], lib);
+
+      fs.mkdirSync(app);
+      git(['init', '-q', '-b', 'main'], app);
+      git(['config', 'user.email', 'test@example.com'], app);
+      git(['config', 'user.name', 'Test'], app);
+      git(['config', 'commit.gpgsign', 'false'], app);
+      fs.writeFileSync(path.join(app, 'real.ts'), 'export const x = 1;\n');
+      git(
+        ['-c', 'protocol.file.allow=always', 'submodule', 'add', '-q', lib.split(path.sep).join('/'), 'vendor/lib'],
+        app,
+      );
+      git(['add', '-A'], app);
+      git(['commit', '-q', '-m', 'init'], app);
+
+      git(['checkout', '-q', 'HEAD~1'], path.join(app, 'vendor', 'lib'));
+      const { stdout, code } = blindspot(['check', '--json'], app);
+      assert.equal(code, 0);
+      const report = JSON.parse(stdout) as DiffReport;
+      assert.deepEqual(report.files.map((f) => f.file), []);
+      assert.equal(report.totalChangedLines, 0);
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
   test('outside a git repository it says so and does not crash', () => {
     const plain = fs.mkdtempSync(path.join(os.tmpdir(), 'blindspot-nogit-'));
     try {

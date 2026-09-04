@@ -3,6 +3,22 @@ import type { FileDiff } from './types';
 const HUNK = /^@@+ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/;
 
 /**
+ * The mode of the file's new side, from the header lines that carry one:
+ * `index a..b 100644` when the mode is unchanged, `new file mode`, `new mode`
+ * (the old mode is on its own `old mode` line), and `deleted file mode` for
+ * the side that is gone.
+ */
+const NEW_MODE = /^(?:index [0-9a-f]+\.\.[0-9a-f]+ |new file mode |new mode |deleted file mode )(\d{6})$/;
+
+/**
+ * A gitlink (submodule pointer) or a symlink. Their "lines" are a commit hash
+ * and a link target: nothing an editor opens, so nothing anyone can read, and
+ * counting them puts an unread line in the report that can never be cleared —
+ * a commit that only bumps a submodule would score 0%.
+ */
+const NOT_TEXT_MODES = new Set(['160000', '120000']);
+
+/**
  * Parse `git diff --unified=0 --no-color` into per-file changed-line sets.
  *
  * We only care about line numbers in the *new* file, because that is what the
@@ -12,6 +28,7 @@ const HUNK = /^@@+ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/;
  */
 export function parseUnifiedDiff(text: string): FileDiff[] {
   const files: FileDiff[] = [];
+  const notText = new Set<FileDiff>();
   let current: FileDiff | null = null;
   let newLine = 0;
   let hunkHadDeletion = false;
@@ -37,6 +54,14 @@ export function parseUnifiedDiff(text: string): FileDiff[] {
 
     if (raw.startsWith('Binary files ') || raw.startsWith('GIT binary patch')) {
       current.binary = true;
+      continue;
+    }
+    const mode = NEW_MODE.exec(raw);
+    if (mode) {
+      // A symlink that became a regular file is text now and is measured; a
+      // file that became a symlink is not. Only the new side decides.
+      if (NOT_TEXT_MODES.has(mode[1])) notText.add(current);
+      else notText.delete(current);
       continue;
     }
     // `+++ b/path` is the authoritative new path (handles renames and quoting).
@@ -72,7 +97,9 @@ export function parseUnifiedDiff(text: string): FileDiff[] {
   }
   flushHunk();
 
-  return files.filter((f) => f.addedLines.length > 0 || f.deletedLines > 0 || f.binary);
+  return files.filter(
+    (f) => !notText.has(f) && (f.addedLines.length > 0 || f.deletedLines > 0 || f.binary),
+  );
 }
 
 const C_ESCAPES: Record<string, string> = {

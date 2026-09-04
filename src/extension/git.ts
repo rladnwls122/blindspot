@@ -136,7 +136,9 @@ async function wholeFileDiffs(ctx: GitContext, files: string[]): Promise<FileDif
   for (const file of files) {
     try {
       const abs = path.join(ctx.root, file);
-      const stat = await fs.stat(abs);
+      // lstat, not stat: an untracked symlink would otherwise be read through
+      // to its target and that file's every line reported as new.
+      const stat = await fs.lstat(abs);
       if (!stat.isFile() || stat.size > 2 * 1024 * 1024) continue;
       const content = await fs.readFile(abs, 'utf8');
       if (content.includes('\0')) continue;

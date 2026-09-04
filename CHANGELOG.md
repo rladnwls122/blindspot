@@ -86,6 +86,13 @@
 
 ### Fixed
 
+- A submodule bump or a symlink retarget no longer shows up as an unread line.
+  Their diff "lines" are a commit hash and a link target, nothing an editor
+  opens, so the report carried an unread line that could never be cleared and
+  a commit that only moved a submodule pointer scored 0%. The parser now reads
+  the new side's mode from the header and leaves gitlinks and symlinks out; a
+  symlink that becomes a regular file is text and is measured. An untracked
+  symlink is likewise skipped instead of being read through to its target.
 - A file whose name has a non-ASCII character — `src/한글.ts` — no longer
   breaks the whole measurement. git quotes such a path in the diff header with
   octal escapes of its UTF-8 bytes; the parser tried to read that as a JSON
