@@ -57,7 +57,7 @@ export class EvidenceHover implements vscode.HoverProvider {
         // A code fence, because the explanation is a column of ✓ and · that
         // only reads as a list when it stays monospaced.
         '```',
-        explain(evidence, cfg, text),
+        explain(evidence, cfg, text, file),
         '```',
         `Risk: ${hunk.risk} — ${hunk.reason}`,
       ].join('\n'),

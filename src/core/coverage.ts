@@ -86,7 +86,7 @@ function evaluateLines(diff: FileDiff, sources: ReportSources, cfg: BlindspotCon
       text: lineText,
       verdict: classifyLine(diff.file, lineText, cfg),
       ev,
-      signals: evaluate(ev, cfg, lineText),
+      signals: evaluate(ev, cfg, lineText, diff.file),
     };
   });
 }

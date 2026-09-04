@@ -475,6 +475,53 @@ describe('cli against a real repository', () => {
     git(['checkout', '--', file]);
   });
 
+  test('a submodule diff and a textconv filter cannot put foreign text in the report', () => {
+    // diff.submodule=diff inlines the submodule's own diff, whose paths belong
+    // to another repository; a textconv filter shows converted text, which is
+    // not what is on screen. Both would put lines in the report that nobody
+    // can read, and that no evidence can ever attach to.
+    const base = fs.mkdtempSync(path.join(os.tmpdir(), 'blindspot-cfg-'));
+    const lib = path.join(base, 'lib');
+    const app = path.join(base, 'app');
+    try {
+      fs.mkdirSync(lib);
+      git(['init', '-q', '-b', 'main'], lib);
+      git(['config', 'user.email', 'test@example.com'], lib);
+      git(['config', 'user.name', 'Test'], lib);
+      fs.writeFileSync(path.join(lib, 'a.txt'), 'one\n');
+      git(['add', '-A'], lib);
+      git(['commit', '-q', '-m', 'one'], lib);
+      fs.writeFileSync(path.join(lib, 'a.txt'), 'one\ntwo\n');
+      git(['commit', '-q', '-am', 'two'], lib);
+
+      fs.mkdirSync(app);
+      git(['init', '-q', '-b', 'main'], app);
+      git(['config', 'user.email', 'test@example.com'], app);
+      git(['config', 'user.name', 'Test'], app);
+      fs.writeFileSync(path.join(app, 'notes.md'), 'hello world\n');
+      fs.writeFileSync(path.join(app, '.gitattributes'), '*.md diff=upper\n');
+      git(
+        ['-c', 'protocol.file.allow=always', 'submodule', 'add', '-q', lib.split(path.sep).join('/'), 'vendor/lib'],
+        app,
+      );
+      git(['add', '-A'], app);
+      git(['commit', '-q', '-m', 'init'], app);
+
+      // Both settings on, and both kinds of change present.
+      git(['config', 'diff.submodule', 'diff'], app);
+      git(['config', 'diff.upper.textconv', 'tr a-z A-Z <'], app);
+      git(['checkout', '-q', 'HEAD~1'], path.join(app, 'vendor', 'lib'));
+      fs.writeFileSync(path.join(app, 'notes.md'), 'hello there\n');
+
+      const report = JSON.parse(blindspot(['check', '--json'], app).stdout) as DiffReport;
+      const files = report.files.map((f) => f.file);
+      assert.deepEqual(files, ['notes.md'], `submodule internals leaked: ${files.join(', ')}`);
+      assert.equal(report.files[0].changedLines, 1, 'one line, the one on disk');
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
   test("the user's diff prefix settings do not change which file is measured", () => {
     // diff.mnemonicPrefix labels the sides c/ i/ w/ o/ instead of a/ b/, and
     // diff.noprefix drops them altogether. Both are cosmetic in a terminal;

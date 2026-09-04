@@ -13,14 +13,17 @@ import type { EvidenceSignals, LineEvidence, Provenance } from './types';
  * `lineText` is optional and only affects the two time thresholds: a line
  * carrying more tokens needs proportionally more time before it counts as
  * seen. Omitting it evaluates the line at average cost, which is what the
- * historical flat model did.
+ * historical flat model did. `file` is optional in the same way and only
+ * unlocks the shapes that need to know what kind of file this is — a bare
+ * `SELECT` is a keyword in one and a string in another.
  */
 export function evaluate(
   ev: LineEvidence,
   cfg: BlindspotConfig,
   lineText?: string,
+  file?: string,
 ): EvidenceSignals {
-  const cost = lineText === undefined ? 1 : readCost(lineText, cfg);
+  const cost = lineText === undefined ? 1 : readCost(lineText, cfg, file);
   const visible = ev.visibleMs >= cfg.visibleMsForPoint * cost;
   const focused = ev.focusedMs >= cfg.focusedMsForPoint * cost;
   const dwell = ev.dwellEvents > 0;
@@ -44,7 +47,7 @@ export function evaluate(
     (revisit ? w.revisit : 0);
 
   const max = maxPoints(w);
-  const read = readFraction(ev, cfg, lineText);
+  const read = readFraction(ev, cfg, lineText, file);
   return {
     visible,
     focused,
@@ -55,7 +58,7 @@ export function evaluate(
     points,
     confidence: max > 0 ? Math.min(1, points / max) : 0,
     readFraction: read,
-    focusFraction: focusFraction(ev, cfg, lineText),
+    focusFraction: focusFraction(ev, cfg, lineText, file),
     interacted: caret || edited,
     // The signals say *how* a line was read; the time says *whether* it was.
     // Writing a line by hand is the one signal that vouches on its own.
@@ -68,8 +71,13 @@ export function evaluate(
  * acknowledgement time for a line of its cost. Grows linearly, so half the
  * time is half a read — never a full read for a glance.
  */
-export function readFraction(ev: LineEvidence, cfg: BlindspotConfig, lineText?: string): number {
-  const cost = lineText === undefined ? 1 : readCost(lineText, cfg);
+export function readFraction(
+  ev: LineEvidence,
+  cfg: BlindspotConfig,
+  lineText?: string,
+  file?: string,
+): number {
+  const cost = lineText === undefined ? 1 : readCost(lineText, cfg, file);
   const need = Math.max(1, cfg.readAckMs * cost);
   return Math.min(1, ev.focusedMs / need);
 }
@@ -79,15 +87,25 @@ export function readFraction(ev: LineEvidence, cfg: BlindspotConfig, lineText?: 
  * against a higher ceiling. Beyond `focusCapMs` more time is idling, not
  * focus, and earns nothing.
  */
-export function focusFraction(ev: LineEvidence, cfg: BlindspotConfig, lineText?: string): number {
-  const cost = lineText === undefined ? 1 : readCost(lineText, cfg);
+export function focusFraction(
+  ev: LineEvidence,
+  cfg: BlindspotConfig,
+  lineText?: string,
+  file?: string,
+): number {
+  const cost = lineText === undefined ? 1 : readCost(lineText, cfg, file);
   const cap = Math.max(1, cfg.focusCapMs * cost);
   return Math.min(1, ev.focusedMs / cap);
 }
 
 /** Human-readable explanation of a verdict, for tooltips and the CLI. */
-export function explain(ev: LineEvidence, cfg: BlindspotConfig, lineText?: string): string {
-  const s = evaluate(ev, cfg, lineText);
+export function explain(
+  ev: LineEvidence,
+  cfg: BlindspotConfig,
+  lineText?: string,
+  file?: string,
+): string {
+  const s = evaluate(ev, cfg, lineText, file);
   const parts: string[] = [];
   parts.push(`${s.visible ? '✓' : '·'} on screen (${Math.round(ev.visibleMs)}ms)`);
   parts.push(`${s.focused ? '✓' : '·'} focused (${Math.round(ev.focusedMs)}ms)`);
@@ -97,7 +115,7 @@ export function explain(ev: LineEvidence, cfg: BlindspotConfig, lineText?: strin
   );
   parts.push(`${s.edited ? '✓' : '·'} edited (${ev.humanEdits}×)`);
   parts.push(`${s.revisit ? '✓' : '·'} re-read (${ev.revisits ?? 0}× returned)`);
-  const cost = lineText === undefined ? 1 : readCost(lineText, cfg);
+  const cost = lineText === undefined ? 1 : readCost(lineText, cfg, file);
   parts.push(
     `${s.readFraction >= 1 ? '✓' : '·'} read time ${(ev.focusedMs / 1000).toFixed(1)}s of ` +
       `${((cfg.readAckMs * cost) / 1000).toFixed(1)}s (${Math.round(s.readFraction * 100)}%)`,

@@ -49,6 +49,22 @@
   message gets one trailer, not two; and when the editor is about to open the
   trailer sits below the subject line the way `git commit -s` places its own.
   `blindspot check --staged --trailer` prints the line by itself.
+- **The line-shape catalogue, implemented.** How long a line must hold your
+  focus before it counts as read scales with how much reading it actually
+  costs, and the catalogue in
+  `docs/superpowers/specs/2026-09-03-low-read-cost-line-shapes.md` is now in
+  the model in full: dependency declarations, literal assignments, `this.x =
+  x` delegation, a return of a literal, struct and enum members across Go,
+  Rust and C, string-only log lines, argument-less annotations, test
+  skeletons, and per-file-type shapes for JSON, YAML, CSS, SQL, Dockerfiles,
+  Makefiles and JSX.
+  The half that matters is the trap list, which runs first and wins: a line
+  carrying a credential, a default, a comparison, control flow, a mutation of
+  somebody else's state, a destructive verb, concurrency, a suppressed check,
+  a swallowed error, a one-line permission answer or a default export pays
+  full price however simple its shape. A comment is cheap; a comment saying
+  `TODO`, `SAFETY`, `@ts-ignore` or `noqa` is not, because it exists to be
+  acted on. Every entry has a should-be-cheap and a must-not-be-cheap test.
 - Mode-aware gutter marks: orange (red where risky) for an unread changed
   line, blue for a line you simply have not got to yet while reading.
 
@@ -86,6 +102,12 @@
 
 ### Fixed
 
+- `diff.submodule=diff` and a `.gitattributes` textconv filter no longer put
+  lines nobody can read into the report. The first inlines a submodule's own
+  diff, whose paths belong to another repository and exist nowhere in this
+  working tree; the second shows converted text rather than the lines on
+  screen. Either way the report carried lines no evidence could ever attach
+  to. The diff is now requested with `--submodule=short --no-textconv`.
 - A user's `diff.mnemonicPrefix` or `diff.noprefix` setting no longer changes
   what gets measured. The parser strips the standard `a/` and `b/` from the
   diff header; with mnemonic prefixes every file came back as `w/src/…`, a

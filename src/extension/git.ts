@@ -81,12 +81,21 @@ export interface DiffOptions {
  */
 export async function collectDiff(ctx: GitContext, opts: DiffOptions = {}): Promise<FileDiff[]> {
   const baseRef = opts.baseRef || 'HEAD';
-  // The prefixes are pinned because the parser strips exactly `a/` and `b/`.
-  // A user's `diff.mnemonicPrefix` would make every path `w/src/...` — a
-  // file that does not exist, so nothing anchors and the report names the
-  // wrong file — and `diff.noprefix` would have the parser strip a real
-  // directory called `a` or `b`. Configuration shapes what a person sees in
-  // their terminal; it must not shape what gets measured.
+  // Every flag here pins something a user's git configuration could otherwise
+  // change. What someone has git show them in their terminal is their
+  // business; it must not decide what gets measured.
+  //
+  //   --src-prefix / --dst-prefix  the parser strips exactly `a/` and `b/`.
+  //     `diff.mnemonicPrefix` would make every path `w/src/…`, a file that
+  //     exists nowhere, so nothing anchors and the report names the wrong
+  //     file; `diff.noprefix` would strip a real directory called `a` or `b`.
+  //   --submodule=short  `diff.submodule=diff` inlines the submodule's *own*
+  //     diff, whose paths (`vendor/lib/a.txt`) are files of another
+  //     repository. They are not in this working tree, so no evidence can
+  //     ever attach to them and they can never be read.
+  //   --no-textconv  a `.gitattributes` textconv filter shows converted text.
+  //     The evidence is anchored to hashes of the lines actually on screen,
+  //     so a converted line is a line nobody can ever have read.
   const args = [
     'diff',
     '--unified=0',
@@ -95,6 +104,8 @@ export async function collectDiff(ctx: GitContext, opts: DiffOptions = {}): Prom
     '--find-renames',
     '--src-prefix=a/',
     '--dst-prefix=b/',
+    '--submodule=short',
+    '--no-textconv',
   ];
   if (opts.staged) args.push('--cached');
   args.push(baseRef, '--');

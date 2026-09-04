@@ -209,28 +209,47 @@ beforeEach(() => {           afterAll(async () => {    @pytest.fixture
 | `export default` 한 줄짜리 `export default foo;` | 무엇이 공개되는지 |
 | 숫자 리터럴이 `0` `1` `-1` `""` 이 아닌 매직 넘버 `const TIMEOUT = 300000;` | 단위·크기 오류. T3 유지하되 T2 이하로 내리지 않음 |
 
-## 12. 현재 구현 vs 이 목록
+## 12. 현재 구현 — 전부 반영됨
 
-`src/core/attention.ts` `SHAPES` 가 지금 잡는 것:
+`src/core/attention.ts`가 이 목록을 `TRAPS` → 파일 확장자 테이블 → `DISCOUNTS`
+순으로 적용한다. 순서가 곧 원칙 3이다: 트랩이 먼저 이기고, 애매하면 할인하지 않는다.
 
-- §3 import 계열 (JS/TS/Python/C#/Java/Go/C/Node require) — T2
-- §4 리터럴·식별자·`new X()` 대입, 접근 제한자 포함 — T3
-- §5 TS/Kotlin 스타일 `name: type;` 필드 — T4
-- §6 주석 (`//` `/*` `*` `#`) — T4, 경고 주석 예외 **아직 없음**
-- §2 단독 키워드 — T1
+| 항목 | 상태 |
+| --- | --- |
+| §2 단독 키워드 (`fi` `done` `esac` 등 포함) | T1 |
+| §3 의존성 선언 (JS/TS·Python·Java·C#·Go·Rust·Ruby·PHP·Dart·Elixir·Haskell·Shell·CSS·C) | T2, `const x = require(...)` 포함 |
+| §3 예외: 이름을 묶지 않는 side-effect import | T3 (일반 import 규칙보다 **먼저** 검사) |
+| §4 리터럴·식별자·`new X()` 대입, 키워드 없는 형태(`MAX = 3`, `$max = 3`, `x := 0`) | T3 |
+| §4a `return <literal\|identifier>` , `Ok(x)` `Some(x)` | T3 |
+| §4b `this.x = x` `self.x = x`, 한 줄 getter/위임 | T3 |
+| §5 TS/Kotlin 필드, Go struct 필드(태그 포함), Rust `pub name: String,`, C 멤버, enum 멤버 | T4 |
+| §6 주석 | T4, **경고 주석(TODO/FIXME/HACK/XXX/SAFETY/@ts-ignore/eslint-disable/noqa/type: ignore)은 할인 없음** |
+| §7 문자열 인수만 있는 로그 | T4 |
+| §8 인수 없는 데코레이터·어노테이션·속성, 파일 서두 한 줄 | T3 |
+| §9 테스트 골격 (`describe`/`it`/`beforeEach`/`#[test]`/`func TestX`/`@pytest.fixture`) | T3 |
+| §10 마크업/설정 (JSON·YAML·TOML·CSS·SQL·Dockerfile·Makefile·HTML/JSX) | T3, 확장자별 테이블 + 각 테이블의 "비싼 줄"을 자체 트랩으로 |
+| §11 트랩 목록 전부 | 할인 없음 |
 
-아직 없는 것, 우선순위 순:
+§10은 파일 경로를 알아야 성립하므로 `readCost(text, cfg, file?)` /
+`evaluate(ev, cfg, lineText?, file?)`에 선택 인자를 더했다. 인자가 없으면 예전과
+똑같이 동작하므로 기존 호출부는 그대로다. 리포트는 `coverage.ts`가, hover는
+`hover.ts`가 경로를 넘긴다.
 
-1. §11 트랩 목록의 `secret/token/password` 와 경고 주석 예외 — 오탐 방지가 먼저
-2. §4b `this.x = x;` `self.x = x` 위임 대입 — 가장 흔한 스킴 대상
-3. §4a `return <literal|identifier>;` — 지금은 `return;` 만
-4. §5 Go/Rust/C struct 필드 (`Name string`, `pub name: String,`)
-5. §7 문자열-only 로그
-6. §8 인수 없는 데코레이터, §9 테스트 골격
-7. §10 마크업/설정 — 파일 확장자 기반 별도 테이블 필요
+### 구현하면서 좁힌 것
 
-각 항목은 `test/attention.test.ts` 에 "싸야 하는 줄" 과 "싸면 안 되는 줄" 을
-쌍으로 넣는다. 트랩이 하나라도 통과하면 그 패턴은 좁힌다.
+트랩이 통과시킨 세 줄을 테스트가 잡았고, 스펙의 지시대로 패턴을 고쳤다.
+
+- `const fs = require('fs');` — §3인데 §4 대입 규칙에도 걸리지 않아 할인이 없었다.
+  import 행에 묶는 형태를 추가.
+- `let session = null;` — `session`이 트랩 목록에 없었다. `risk.ts`는 session
+  코드를 critical로 치므로 두 모델이 어긋나 있었다. 자격증명 트랩에 `session`과
+  `cookie`를 넣어 맞췄다.
+- `// @ts-ignore` — `\b(?:…|@ts-ignore)\b`는 절대 매칭되지 않는다. `@` 앞에는
+  단어 경계가 없기 때문. 비단어로 시작하는 마커는 그룹 밖으로 뺐다.
+
+각 항목은 `test/attention.test.ts`의 `shape discounts`에 "싸야 하는 줄"과 "싸면 안
+되는 줄"을 쌍으로 갖는다. 트랩이 하나라도 통과하면 그 패턴을 좁힌다 — 테스트를
+지우지 않는다.
 
 ## 13. 참고: 근거
 
