@@ -7,8 +7,12 @@
 Two modes instead of one, a sidebar, a report panel fed by your own session, a
 commit trailer, the line-shape model in full, and a long run of git-plumbing
 fixes — a file name with a non-ASCII character, a submodule bump, a symlink, a
-rename, a linked worktree, and four `diff.*` settings that quietly changed what
-was measured.
+rename, a linked worktree, two spellings of one directory, and four `diff.*`
+settings that quietly changed what was measured.
+
+CI runs on development branches now, not only on `main`. It had been failing on
+Windows since 2026-09-02 and no branch met that platform before it was merged,
+which is how three of the fixes above went unnoticed for two days.
 
 ### Added
 
@@ -128,6 +132,13 @@ was measured.
 
 ### Fixed
 
+- `blindspot read <path>` and `blindspot forget <path>` now find the path on
+  Windows. git always reports the long spelling of a directory and the shell
+  reports whatever it was started with, so the same folder is
+  `C:\Users\runneradmin\…` to one and `C:\Users\RUNNER~1\…` to the other;
+  when they disagreed the relative path walked up out of the repository and
+  nothing matched, reported as "no reading recorded for it" — a wrong answer in
+  the voice of a right one. Both sides are canonicalised first.
 - `diff.submodule=diff` and a `.gitattributes` textconv filter no longer put
   lines nobody can read into the report. The first inlines a submodule's own
   diff, whose paths belong to another repository and exist nowhere in this
