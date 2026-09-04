@@ -86,6 +86,13 @@
 
 ### Fixed
 
+- A file whose name has a non-ASCII character — `src/한글.ts` — no longer
+  breaks the whole measurement. git quotes such a path in the diff header with
+  octal escapes of its UTF-8 bytes; the parser tried to read that as a JSON
+  string and threw, and the error surfaced as "git diff against HEAD failed"
+  for every file in the repository: nothing measured, and an enforcing hook
+  blocked the commit. Paths are now unquoted the way git quotes them, on either
+  side of a rename and in `rename to` lines too.
 - The editor was collecting evidence under different focal defaults than the
   CLI, the tests and the docs: `package.json` still declared
   `focalSpanLines` 5 / `focalDecayLines` 24 / `peripheralFloor` 0.2 /

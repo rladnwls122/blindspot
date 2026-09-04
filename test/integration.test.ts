@@ -422,6 +422,28 @@ describe('cli against a real repository', () => {
     fs.rmSync(path.join(repo, 'src/whole.ts'));
   });
 
+  test('a file with a non-ASCII name is measured like any other', () => {
+    // git quotes this path in the diff header with octal escapes. Before the
+    // parser understood them the whole report failed, not just this file.
+    const file = 'src/한글 파일.ts';
+    write(file, ['const 하나 = 1;', 'const 둘 = 2;']);
+    git(['add', file]);
+    git(['commit', '-q', '-m', 'feat: korean name']);
+    write(file, ['const 하나 = 1;', 'const 둘 = 22;', 'const 셋 = 3;']);
+
+    const working = reportJson();
+    const seen = working.files.find((f) => f.file === file);
+    assert.ok(seen, `expected ${file} in ${working.files.map((f) => f.file).join(', ')}`);
+    assert.equal(seen.changedLines, 2);
+
+    git(['add', file]);
+    const staged = reportJson(['--staged']).files.find((f) => f.file === file);
+    assert.equal(staged?.changedLines, 2, 'the staged text is read back through git show');
+
+    git(['reset', '-q', '--', file]);
+    git(['checkout', '--', file]);
+  });
+
   test('outside a git repository it says so and does not crash', () => {
     const plain = fs.mkdtempSync(path.join(os.tmpdir(), 'blindspot-nogit-'));
     try {

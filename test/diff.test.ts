@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { mergeDiffs, parseUnifiedDiff } from '../src/core/diff';
+import { mergeDiffs, parseUnifiedDiff, unquoteGitPath } from '../src/core/diff';
 
 describe('parseUnifiedDiff', () => {
   test('reads added line numbers from the new file', () => {
@@ -137,6 +137,74 @@ index 0000000..3333333
 
   test('returns nothing for an empty diff', () => {
     assert.deepEqual(parseUnifiedDiff(''), []);
+  });
+
+  test('a non-ASCII file name is read back the way git quoted it', () => {
+    // Verbatim `git diff --unified=0` output for src/한글 파일.ts with
+    // core.quotePath on (the default): octal escapes of the UTF-8 bytes,
+    // and a tab after the quoted +++ path.
+    const diff = `diff --git "a/src/\\355\\225\\234\\352\\270\\200 \\355\\214\\214\\354\\235\\274.ts" "b/src/\\355\\225\\234\\352\\270\\200 \\355\\214\\214\\354\\235\\274.ts"
+index 422c2b7..a1b2c3d 100644
+--- "a/src/\\355\\225\\234\\352\\270\\200 \\355\\214\\214\\354\\235\\274.ts"
++++ "b/src/\\355\\225\\234\\352\\270\\200 \\355\\214\\214\\354\\235\\274.ts"\t
+@@ -2 +2,2 @@ a
+-b
++B
++c
+`;
+    const [file] = parseUnifiedDiff(diff);
+    assert.equal(file.file, 'src/한글 파일.ts');
+    assert.deepEqual(file.addedLines, [2, 3]);
+  });
+
+  test('a rename that quotes only the new name lands on the new name', () => {
+    // Verbatim: old.ts renamed to 새 이름.ts with one line changed. Only the
+    // new side needs quoting, so the header mixes a bare and a quoted path.
+    const diff = `diff --git a/old.ts "b/\\354\\203\\210 \\354\\235\\264\\353\\246\\204.ts"
+similarity index 80%
+rename from old.ts
+rename to "\\354\\203\\210 \\354\\235\\264\\353\\246\\204.ts"
+index 9405325..6fe8acc 100644
+--- a/old.ts
++++ "b/\\354\\203\\210 \\354\\235\\264\\353\\246\\204.ts"\t
+@@ -2 +2 @@ a
+-b
++B
+`;
+    const [file] = parseUnifiedDiff(diff);
+    assert.equal(file.file, '새 이름.ts');
+    assert.deepEqual(file.addedLines, [2]);
+  });
+
+  test('a binary rename has only the header and "rename to" to name the file', () => {
+    const diff = `diff --git a/logo.png "b/\\353\\241\\234\\352\\263\\240.png"
+similarity index 60%
+rename from logo.png
+rename to "\\353\\241\\234\\352\\263\\240.png"
+index 1111111..2222222 100644
+Binary files a/logo.png and "b/\\353\\241\\234\\352\\263\\240.png" differ
+`;
+    const [file] = parseUnifiedDiff(diff);
+    assert.equal(file.file, '로고.png');
+    assert.equal(file.binary, true);
+  });
+});
+
+describe('unquoteGitPath', () => {
+  test('decodes octal UTF-8 bytes, one character across several escapes', () => {
+    assert.equal(unquoteGitPath('"\\355\\225\\234.ts"'), '한.ts');
+  });
+
+  test('handles the C escapes git uses for quotes, backslashes and tabs', () => {
+    // core.quotePath=false leaves the Korean raw but still quotes for the `"`.
+    assert.equal(unquoteGitPath('"q\\"uote 한.ts"'), 'q"uote 한.ts');
+    assert.equal(unquoteGitPath('"back\\\\slash.ts"'), 'back\\slash.ts');
+    assert.equal(unquoteGitPath('"tab\\there.ts"'), 'tab\there.ts');
+  });
+
+  test('leaves a bare path alone, spaces included', () => {
+    assert.equal(unquoteGitPath('src/with space.ts'), 'src/with space.ts');
+    assert.equal(unquoteGitPath('"'), '"');
   });
 });
 
