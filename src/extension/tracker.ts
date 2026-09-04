@@ -5,7 +5,7 @@ import { LineLedger, hasEvidence, type StoredLine } from '../core/ledger';
 import { isIgnored } from '../core/coverage';
 import { attentionNorm, focusLine } from '../core/attention';
 import { emptyActivity, type ActivityCounts, type LineEvidence, type Provenance } from '../core/types';
-import { STATE_VERSION, type AiRegions, type BlindspotState } from '../core/store';
+import { STATE_VERSION, isForgotten, type AiRegions, type BlindspotState } from '../core/store';
 
 const TICK_MS = 250;
 /**
@@ -48,6 +48,8 @@ export class AttentionTracker implements vscode.Disposable {
   /** Last caret move, scroll, hover or edit. Screen time past `idleAfterMs` from here is idling. */
   private lastActivity = Date.now();
   private baseline: BlindspotState['baseline'] = null;
+  /** Paths the reader has told us not to measure. See `store.ts`. */
+  private ignored: string[] = [];
   /**
    * Where the mouse last came to rest, from the editor's hover requests. The
    * caret is where the last keyboard act happened; the pointer is where the
@@ -70,6 +72,7 @@ export class AttentionTracker implements vscode.Disposable {
     this.trackedMs = state.trackedMs;
     this.activity = { ...state.activity };
     this.baseline = state.baseline;
+    this.ignored = [...state.ignored];
     for (const [file, lines] of Object.entries(state.files)) {
       this.pending.set(file, lines);
     }
@@ -112,6 +115,9 @@ export class AttentionTracker implements vscode.Disposable {
   private key(doc: vscode.TextDocument): string | null {
     const rel = this.relKey(doc.uri);
     if (!rel || isIgnored(rel, this.cfg.ignore)) return null;
+    // A file the reader has forgotten stays forgotten while it is open, or the
+    // next tick would put it straight back into the denominator.
+    if (isForgotten(this.ignored, rel)) return null;
     return rel;
   }
 
@@ -457,6 +463,46 @@ export class AttentionTracker implements vscode.Disposable {
     this.markDirty();
   }
 
+  /**
+   * Drop everything recorded for a file, or for a folder and all of it, and
+   * return what went.
+   *
+   * Reading mode measures every file with evidence, so one vendored file
+   * opened by accident stays in the denominator for a month. This is the way
+   * back out, and it is honest about what it does: the evidence is deleted,
+   * not hidden, so the file simply has not been read here.
+   */
+  forget(target: string): string[] {
+    const prefix = target.replace(/\/+$/, '');
+    const gone: string[] = [];
+    for (const file of this.files()) {
+      if (file !== prefix && !file.startsWith(`${prefix}/`)) continue;
+      this.ledgers.delete(file);
+      this.pending.delete(file);
+      gone.push(file);
+    }
+    this.ignored = [
+      ...new Set([...this.ignored.filter((p) => p !== prefix && !p.startsWith(`${prefix}/`)), prefix]),
+    ].sort();
+    this.markDirty();
+    return gone.sort();
+  }
+
+  /** Undo a `forget`: measure this path again from now on. */
+  measureAgain(target: string): boolean {
+    const prefix = target.replace(/\/+$/, '');
+    const next = this.ignored.filter((p) => p !== prefix && !p.startsWith(`${prefix}/`));
+    if (next.length === this.ignored.length) return false;
+    this.ignored = next;
+    this.markDirty();
+    return true;
+  }
+
+  /** What the reader has asked not to be measured. */
+  get forgotten(): readonly string[] {
+    return this.ignored;
+  }
+
   reset(): void {
     this.ledgers.clear();
     this.pending.clear();
@@ -464,6 +510,7 @@ export class AttentionTracker implements vscode.Disposable {
     this.trackedMs = 0;
     this.activity = emptyActivity();
     this.baseline = null;
+    this.ignored = [];
     this.markDirty();
   }
 
@@ -489,6 +536,7 @@ export class AttentionTracker implements vscode.Disposable {
       trackedMs: this.trackedMs,
       activity: { ...this.activity },
       baseline: this.baseline,
+      ignored: [...this.ignored],
     };
   }
 

@@ -358,6 +358,7 @@ npm run icon       # media/icon.png 재생성
 | `Blindspot: Choose What the Diff Is Measured Against` | 마지막 리뷰 / `baseRef` / 임의의 ref |
 | `Blindspot: Review Blindspot` | 안 읽은 hunk로 점프, 위험도 높은 순 |
 | `Blindspot: Mark File As Reviewed` | "이건 GitHub UI에서 읽었다" (사이드바에서도) |
+| `Blindspot: Stop Measuring This File` | 실수로 연 파일을 분모에서 뺀다 (사이드바 휴지통) |
 | `Blindspot: Complete Review` | 기준을 HEAD로 — 여기까지는 봤다 |
 | `Blindspot: Install pre-commit Hook` | 커밋 시점에 카드 출력 |
 | `Blindspot: Toggle Unread Line Markers` | 거터 마커 |
@@ -369,6 +370,9 @@ npm run icon       # media/icon.png 재생성
 blindspot check --staged            # 지금 커밋하려는 것에 대한 카드 출력
 blindspot report                    # 파일별 표 + Read/Focus/Activity/Pace
 blindspot read                      # Reading 모드가 보는 것 — 연 파일 전체. git 불필요
+blindspot read src/core             # 그중 한 파일이나 폴더만
+blindspot forget vendor/            # 분모에서 뺀다 (증거 삭제 + 이후로도 재지 않음)
+blindspot forget --list             # 뺀 목록 · --undo <path> 로 되돌림
 blindspot check --min-coverage 70   # 70% 미만이면 exit 1 (CI나 엄격한 훅용)
 blindspot check --json              # 기계가 읽는 형식
 blindspot check --staged --trailer  # 커밋 트레일러 한 줄: Blindspot: 36% (66/182 lines unread)

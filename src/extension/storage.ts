@@ -15,6 +15,7 @@ import type { GitContext } from './git';
 import type { WorkspaceContext } from './workspace';
 
 const STATE_FILE = 'state.json';
+const META_FILE = 'meta.json';
 const PRUNE_AFTER_MS = 30 * 24 * 60 * 60 * 1000;
 
 /**
@@ -25,6 +26,51 @@ const PRUNE_AFTER_MS = 30 * 24 * 60 * 60 * 1000;
  */
 export function statePath(ctx: WorkspaceContext): string {
   return path.join(ctx.stateDir, STATE_FILE);
+}
+
+export function metaPath(ctx: WorkspaceContext): string {
+  return path.join(ctx.stateDir, META_FILE);
+}
+
+/**
+ * What a state directory is for, in plain text beside the state itself.
+ *
+ * A folder that is not a repository has its evidence under
+ * `~/.blindspot/<12 hex characters>`, and a directory named like that tells
+ * whoever finds it nothing: not which folder it belongs to, not whether it is
+ * still in use, not whether deleting it loses anything. So the folder's own
+ * path and the time it was last written go in beside it. Inside a repository
+ * there is nothing to explain — the directory is `.git/blindspot` — so none is
+ * written.
+ */
+export interface WorkspaceMeta {
+  version: number;
+  root: string;
+  lastAccess: number;
+}
+
+export async function loadMeta(ctx: WorkspaceContext): Promise<WorkspaceMeta | null> {
+  try {
+    const raw = JSON.parse(await fs.readFile(metaPath(ctx), 'utf8')) as Record<string, unknown>;
+    if (typeof raw.root !== 'string') return null;
+    return {
+      version: typeof raw.version === 'number' ? raw.version : 1,
+      root: raw.root,
+      lastAccess: typeof raw.lastAccess === 'number' ? raw.lastAccess : 0,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function saveMeta(ctx: WorkspaceContext, now: number): Promise<void> {
+  if (ctx.git) return;
+  const meta: WorkspaceMeta = { version: 1, root: ctx.root, lastAccess: now };
+  try {
+    await fs.writeFile(metaPath(ctx), JSON.stringify(meta, null, 2) + '\n', 'utf8');
+  } catch {
+    // A missing note about the state is not a reason to lose the state.
+  }
 }
 
 export async function loadState(ctx: WorkspaceContext): Promise<BlindspotState> {
@@ -46,6 +92,7 @@ export async function saveState(ctx: WorkspaceContext, state: BlindspotState): P
   const tmp = `${target}.${process.pid}.tmp`;
   await fs.writeFile(tmp, serializeState(state), 'utf8');
   await fs.rename(tmp, target);
+  await saveMeta(ctx, Date.now());
 }
 
 export function fileState(state: BlindspotState, file: string): StoredLine[] {

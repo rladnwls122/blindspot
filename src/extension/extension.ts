@@ -43,6 +43,7 @@ const COMMAND_IDS = [
   'blindspot.selectBase',
   'blindspot.toggleDecorations',
   'blindspot.markFileReviewed',
+  'blindspot.forgetFile',
   'blindspot.resetSession',
   'blindspot.installGitHook',
   'blindspot.completeReview',
@@ -575,6 +576,42 @@ class Controller implements vscode.Disposable {
       this.tracker.markReviewed(rel, lineCount);
       await this.refresh();
       void vscode.window.showInformationMessage(`Blindspot: marked ${rel} as reviewed.`);
+    });
+
+    push('blindspot.forgetFile', async (node?: unknown) => {
+      // Same argument shape as marking a file reviewed: the tree node from the
+      // sidebar, the active editor from the palette.
+      const fromTree =
+        node && typeof node === 'object' && typeof (node as { file?: unknown }).file === 'string'
+          ? (node as { file: string }).file
+          : null;
+      let rel: string | null = fromTree && isRepoRelative(fromTree) ? fromTree : null;
+      if (!rel) {
+        const editor = vscode.window.activeTextEditor;
+        if (!editor) {
+          void vscode.window.showWarningMessage('Blindspot: open a file to stop measuring it.');
+          return;
+        }
+        rel = this.relativePath(editor.document.uri);
+        if (!rel) {
+          void vscode.window.showWarningMessage(
+            'Blindspot: this file is not a tracked file in this repository.',
+          );
+          return;
+        }
+      }
+      const gone = this.tracker.forget(rel);
+      if (gone.length === 0) {
+        void vscode.window.showInformationMessage(`Blindspot: nothing recorded for ${rel}.`);
+        return;
+      }
+      await this.flush();
+      await this.refresh();
+      void vscode.window.showInformationMessage(
+        gone.length === 1
+          ? `Blindspot: forgot ${gone[0]}. It is no longer measured.`
+          : `Blindspot: forgot ${gone.length} files under ${rel}.`,
+      );
     });
 
     push('blindspot.resetSession', async () => {

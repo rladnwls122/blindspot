@@ -14,19 +14,24 @@ import {
 } from '../core/render';
 import { pct } from '../core/score';
 import type { BlindspotConfig } from '../core/config';
-import type { BlindspotState } from '../core/store';
+import { forgetFiles, isForgotten, measureAgain, type BlindspotState } from '../core/store';
 import type { DiffReport, FileDiff } from '../core/types';
 import { collectDiff, findGitContext, type GitContext } from '../extension/git';
-import { loadConfig, loadState, installHook, installTrailerHook } from '../extension/storage';
+import { loadConfig, loadState, saveState, installHook, installTrailerHook } from '../extension/storage';
 import { findWorkspace, workspaceFromGit } from '../extension/workspace';
 
-const COMMANDS = ['check', 'report', 'read', 'install-hook', 'help', 'version'];
+const COMMANDS = ['check', 'report', 'read', 'forget', 'install-hook', 'help', 'version'];
 
 interface Args {
   command: string;
   /** A usage mistake, reported instead of guessing what was meant. */
   error: string | null;
   staged: boolean;
+  /** A file or folder the command is limited to, when one was given. */
+  target: string | null;
+  /** `forget --list` and `forget --undo`. */
+  list: boolean;
+  undo: boolean;
   json: boolean;
   /** Print only the `Blindspot:` commit trailer, for prepare-commit-msg. */
   trailer: boolean;
@@ -43,8 +48,14 @@ const HELP = `blindspot — how much of this diff have you actually read?
 Usage
   blindspot check [options]      print the review card; exit non-zero if enforcing
   blindspot report [options]     full per-file report
-  blindspot read [options]       reading coverage of every file you have opened here
-                                 (what the editor's Reading mode shows; needs no git)
+  blindspot read [path]          reading coverage of every file you have opened here
+                                 (what the editor's Reading mode shows; needs no git).
+                                 With a path, only that file or folder
+  blindspot forget <path>        drop everything recorded for a file or folder, so it
+                                 leaves the reading report. The evidence is deleted,
+                                 and the path stays out until you undo it
+  blindspot forget --list        what you have forgotten here
+  blindspot forget --undo <path> measure it again from now on
   blindspot install-hook         install the pre-commit hook in this repo
   blindspot install-hook --trailer
                                  also install the prepare-commit-msg hook that
@@ -61,6 +72,8 @@ Options
   --json                  machine-readable output
   --trailer               print only the commit trailer line (nothing when there
                           is nothing to measure)
+  --list                  with forget: list the paths you have forgotten
+  --undo                  with forget: measure the path again
   --no-color              disable ANSI colour
   --quiet                 only print when there is something to say
   -v, --version           print the version
@@ -99,6 +112,7 @@ export async function main(argv: string[]): Promise<number> {
   }
 
   if (args.command === 'read') return readCommand(args);
+  if (args.command === 'forget') return forgetCommand(args);
 
   const ctx = await findGitContext(process.cwd());
   if (!ctx) {
@@ -236,7 +250,8 @@ async function readCommand(args: Args): Promise<number> {
   const ws = await findWorkspace(process.cwd());
   const cfg = await loadConfig(ws);
   const state = await loadState(ws);
-  const report = readingReport(ws.root, state, cfg);
+  const only = args.target === null ? null : relativeTarget(ws.root, args.target);
+  const report = readingReport(ws.root, state, cfg, only);
 
   if (args.json) {
     process.stdout.write(JSON.stringify(report, null, 2) + '\n');
@@ -245,7 +260,9 @@ async function readCommand(args: Args): Promise<number> {
   if (report.totalChangedLines === 0) {
     if (!args.quiet) {
       process.stdout.write(
-        'blindspot: no reading recorded here yet — open files in the editor with Reading mode on\n',
+        only === null
+          ? 'blindspot: no reading recorded here yet — open files in the editor with Reading mode on\n'
+          : `blindspot: no reading recorded for ${only}\n`,
       );
     }
     return 0;
@@ -263,7 +280,89 @@ async function readCommand(args: Args): Promise<number> {
   return 0;
 }
 
-export function readingReport(root: string, state: BlindspotState, cfg: BlindspotConfig): DiffReport {
+/**
+ * A path the user typed, as the key the evidence is stored under: relative to
+ * the workspace root, forward slashes, no trailing one. A path outside the
+ * workspace comes back as given, and matches nothing — the honest outcome,
+ * rather than quietly reporting on some other folder.
+ */
+function relativeTarget(root: string, given: string): string {
+  const rel = path.relative(root, path.resolve(process.cwd(), given));
+  const normalized = rel.split(path.sep).join('/').replace(/\/+$/, '');
+  return normalized === '' ? '.' : normalized;
+}
+
+/** True when `file` is `target` itself, or lives under it. */
+function withinTarget(file: string, target: string | null): boolean {
+  if (target === null || target === '.') return true;
+  return file === target || file.startsWith(`${target}/`);
+}
+
+/**
+ * Drop a file or folder from the reading target, evidence and all.
+ *
+ * Deleting the evidence is only half of it. The path is remembered as
+ * forgotten, because a file still open in the editor would earn fresh evidence
+ * within seconds and be back in the denominator before anyone looked.
+ */
+async function forgetCommand(args: Args): Promise<number> {
+  const ws = await findWorkspace(process.cwd());
+  const state = await loadState(ws);
+
+  if (args.list) {
+    if (args.json) {
+      process.stdout.write(JSON.stringify({ forgotten: state.ignored }, null, 2) + '\n');
+      return 0;
+    }
+    if (state.ignored.length === 0) {
+      if (!args.quiet) process.stdout.write('blindspot: nothing forgotten here\n');
+      return 0;
+    }
+    process.stdout.write(state.ignored.map((p) => `  ${p}`).join('\n') + '\n');
+    return 0;
+  }
+
+  if (args.target === null) {
+    process.stderr.write(`blindspot: forget needs a path\n\n${HELP}`);
+    return 2;
+  }
+  const target = relativeTarget(ws.root, args.target);
+
+  if (args.undo) {
+    const { state: next, restored } = measureAgain(state, target);
+    if (restored.length === 0) {
+      if (!args.quiet) process.stdout.write(`blindspot: ${target} was not forgotten\n`);
+      return 0;
+    }
+    await saveState(ws, next);
+    process.stdout.write(
+      `blindspot: measuring ${restored.join(', ')} again — nothing in it is read yet\n`,
+    );
+    return 0;
+  }
+
+  const { state: next, forgotten } = forgetFiles(state, target);
+  await saveState(ws, next);
+  if (args.json) {
+    process.stdout.write(JSON.stringify({ target, forgotten }, null, 2) + '\n');
+    return 0;
+  }
+  const what =
+    forgotten.length === 0
+      ? `${target} (nothing was recorded for it)`
+      : forgotten.length === 1
+        ? forgotten[0]
+        : `${forgotten.length} files under ${target}`;
+  process.stdout.write(`blindspot: forgot ${what}\n`);
+  return 0;
+}
+
+export function readingReport(
+  root: string,
+  state: BlindspotState,
+  cfg: BlindspotConfig,
+  only: string | null = null,
+): DiffReport {
   const textCache = new Map<string, string[] | undefined>();
   const getText = (file: string): string[] | undefined => {
     if (textCache.has(file)) return textCache.get(file);
@@ -279,6 +378,8 @@ export function readingReport(root: string, state: BlindspotState, cfg: Blindspo
   };
   const targets: FileDiff[] = [];
   for (const file of Object.keys(state.files).sort()) {
+    if (!withinTarget(file, only)) continue;
+    if (isForgotten(state.ignored, file)) continue;
     const text = getText(file);
     if (text) targets.push(wholeFileTarget(file, text));
   }
@@ -370,6 +471,9 @@ function parseArgs(argv: string[]): Args {
     command: 'check',
     error: null,
     staged: false,
+    target: null,
+    list: false,
+    undo: false,
     json: false,
     trailer: false,
     enforce: false,
@@ -398,6 +502,12 @@ function parseArgs(argv: string[]): Args {
         break;
       case '--trailer':
         args.trailer = true;
+        break;
+      case '--list':
+        args.list = true;
+        break;
+      case '--undo':
+        args.undo = true;
         break;
       case '--enforce':
         args.enforce = true;
@@ -434,9 +544,15 @@ function parseArgs(argv: string[]): Args {
         args.command = 'version';
         break;
       default:
-        args.error ??= a.startsWith('-')
-          ? `unknown option ${a}`
-          : `unexpected argument ${a}`;
+        if (a.startsWith('-')) {
+          args.error ??= `unknown option ${a}`;
+        } else if (args.target !== null) {
+          args.error ??= `only one path, got ${args.target} and ${a}`;
+        } else if (args.command === 'read' || args.command === 'forget') {
+          args.target = a;
+        } else {
+          args.error ??= `unexpected argument ${a}`;
+        }
     }
   }
 
@@ -448,8 +564,14 @@ function parseArgs(argv: string[]): Args {
     // commit message. Refuse rather than pick one.
     args.error ??= '--trailer and --json cannot be combined';
   }
-  if (args.trailer && args.command === 'read') {
+  if (args.trailer && (args.command === 'read' || args.command === 'forget')) {
     args.error ??= '--trailer applies to check and install-hook';
+  }
+  if ((args.list || args.undo) && args.command !== 'forget') {
+    args.error ??= `${args.list ? '--list' : '--undo'} applies to forget`;
+  }
+  if (args.list && args.undo) {
+    args.error ??= '--list and --undo cannot be combined';
   }
   return args;
 }

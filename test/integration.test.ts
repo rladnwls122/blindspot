@@ -598,6 +598,64 @@ describe('cli against a real repository', () => {
     }
   });
 
+  test('`read <path>` narrows to a file or a folder, and `forget` drops one', () => {
+    write('src/keep.ts', ['const keep = 1;', 'const also = 2;']);
+    write('vendor/big/one.ts', ['const a = 1;', 'const b = 2;', 'const c = 3;']);
+    write('vendor/big/two.ts', ['const d = 4;']);
+    recordAsRead('src/keep.ts', [1]);
+    recordAsRead('vendor/big/one.ts', [1]);
+    recordAsRead('vendor/big/two.ts', [1]);
+
+    const all = JSON.parse(blindspot(['read', '--json']).stdout) as DiffReport;
+    assert.equal(
+      all.files.some((f) => f.file === 'vendor/big/one.ts'),
+      true,
+      'a file opened once is in the reading target',
+    );
+
+    // A path narrows the report to that file or folder.
+    const one = JSON.parse(blindspot(['read', '--json', 'vendor/big']).stdout) as DiffReport;
+    assert.deepEqual(one.files.map((f) => f.file).sort(), ['vendor/big/one.ts', 'vendor/big/two.ts']);
+    const single = JSON.parse(blindspot(['read', '--json', 'src/keep.ts']).stdout) as DiffReport;
+    assert.deepEqual(single.files.map((f) => f.file), ['src/keep.ts']);
+
+    // A vendored folder swallowing the denominator is the reason forget exists.
+    const dropped = blindspot(['forget', 'vendor/big']);
+    assert.equal(dropped.code, 0);
+    assert.match(dropped.stdout, /forgot 2 files under vendor\/big/);
+
+    const after = JSON.parse(blindspot(['read', '--json']).stdout) as DiffReport;
+    assert.equal(
+      after.files.some((f) => f.file.startsWith('vendor/')),
+      false,
+      'the folder is out of the reading target',
+    );
+    assert.equal(after.files.some((f) => f.file === 'src/keep.ts'), true, 'and nothing else went');
+
+    // The decision is remembered, not just its effect: an open file would earn
+    // fresh evidence within seconds and be back in the denominator.
+    assert.match(blindspot(['forget', '--list']).stdout, /vendor\/big/);
+    const stored = JSON.parse(
+      fs.readFileSync(path.join(repo, '.git', 'blindspot', 'state.json'), 'utf8'),
+    ) as { ignored: string[] };
+    assert.deepEqual(stored.ignored, ['vendor/big']);
+
+    // Undo restores measurement without inventing evidence.
+    assert.match(blindspot(['forget', '--undo', 'vendor/big']).stdout, /measuring vendor\/big again/);
+    assert.match(blindspot(['forget', '--list']).stdout, /nothing forgotten/);
+    assert.match(blindspot(['forget', '--undo', 'vendor/big']).stdout, /was not forgotten/);
+
+    // A path is required, and only one is accepted.
+    assert.equal(blindspot(['forget']).code, 2);
+    assert.equal(blindspot(['read', 'a', 'b']).code, 2);
+    assert.equal(blindspot(['check', 'somewhere']).code, 2);
+    assert.equal(blindspot(['read', '--undo']).code, 2);
+    assert.equal(blindspot(['forget', '--list', '--undo', 'x']).code, 2);
+
+    fs.rmSync(path.join(repo, 'vendor'), { recursive: true, force: true });
+    fs.rmSync(path.join(repo, 'src/keep.ts'));
+  });
+
   test('outside a git repository it says so and does not crash', () => {
     const plain = fs.mkdtempSync(path.join(os.tmpdir(), 'blindspot-nogit-'));
     try {

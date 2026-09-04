@@ -5,6 +5,8 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { findWorkspace, workspaceWithoutGit } from '../src/extension/workspace';
+import { loadMeta, metaPath, saveState } from '../src/extension/storage';
+import { emptyState } from '../src/core/store';
 
 /**
  * Reading code needs a folder, not a repository. What differs between the two
@@ -16,6 +18,33 @@ import { findWorkspace, workspaceWithoutGit } from '../src/extension/workspace';
 function tempDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'blindspot-ws-'));
 }
+
+describe('the note beside a git-less state directory', () => {
+  test('says which folder it belongs to, and when it was last written', async () => {
+    // ~/.blindspot/<12 hex characters> tells whoever finds it nothing. A
+    // person has to be able to see what it is for and delete it by hand.
+    const home = tempDir();
+    const folder = tempDir();
+    const ws = workspaceWithoutGit(folder, home);
+    const before = Date.now();
+    await saveState(ws, emptyState());
+
+    const meta = await loadMeta(ws);
+    assert.notEqual(meta, null);
+    assert.equal(meta!.root, path.resolve(folder));
+    assert.equal(meta!.lastAccess >= before, true);
+    assert.equal(fs.existsSync(metaPath(ws)), true);
+  });
+
+  test('a repository needs no note — .git/blindspot explains itself', async () => {
+    const repo = tempDir();
+    execFileSync('git', ['init', '-q'], { cwd: repo });
+    const ws = await findWorkspace(repo);
+    await saveState(ws, emptyState());
+    assert.equal(fs.existsSync(metaPath(ws)), false);
+    assert.equal(await loadMeta(ws), null);
+  });
+});
 
 describe('findWorkspace', () => {
   test('a repository keeps its state inside .git', async () => {

@@ -311,7 +311,48 @@ cfg로 `buildReport`를 다시 돌려 새 리포트를 돌려준다. per-line �
 - `~/.blindspot`의 30일 prune이 스코프 선언에도 적용되어야 하나. 증거는 오래되면
   버려도 되지만 "이 폴더를 추적 중"이라는 선언은 사용자의 의도다. 일단 선언은
   prune하지 않는 쪽으로 두고, 쌓이는 게 문제가 되면 그때 다시 본다.
+  **→ 해당 없음이 되었다.** 선언이 없으므로(아래) prune할 선언도 없다. 반대편인
+  `ignored`(forget 목록)는 prune하지 않는다. `pruneState`가 `files`만 건드린다.
 - 스코프 리포트의 Review Score를 diff와 같은 가중치로 낼 것인가. `newCode` 항목이
   스코프에서는 의미가 없다 (전부 기존 코드다). 지금 `computeScore`는 측정할 대상이
   없는 항목을 빼고 가중치를 재분배하므로 자동으로 처리될 가능성이 높지만, 구현할 때
-  확인이 필요하다.
+  확인이 필요하다. **→ 그대로 동작한다.** Reading 모드에서 `newCode`는 측정 대상이
+  없어 빠지고 가중치가 재분배된다 (`test/score.test.ts`).
+
+---
+
+## 구현 결과 — 이 설계에서 바뀐 것
+
+**§1 WorkspaceContext: 그대로 구현됨.** `src/extension/workspace.ts`.
+git 저장소면 `.git/blindspot`, 아니면 `~/.blindspot/<hash>`. 해시는 정규화된
+절대경로의 sha256 앞 12자, win32 대소문자 무시. `meta.json`도 설계대로 쓴다 —
+원래 폴더 경로와 마지막 기록 시각. 저장소 쪽은 `.git/blindspot`이 스스로를
+설명하므로 쓰지 않는다.
+
+**§2–§4 ReviewScope: 만들지 않았다. Reading 모드가 대신한다.**
+선언(`scopes.json`, `Track This File/Folder`, `maxScopeFiles`)이 필요했던 이유는
+"diff가 아닌 읽기 대상을 어떻게 정하는가"였다. Reading 모드는 그 질문에 다르게
+답한다 — **연 파일이 곧 대상**이다. 선언할 것이 없고, 걸을 폴더가 없으니
+`maxScopeFiles`도 없고, 5,000개 stat 문제도 생기지 않는다.
+
+대신 반대 방향의 문제가 생긴다. 선언이 없으므로 **빼는 방법**이 필요하다. 실수로
+연 vendored 파일이 분모를 삼킨다. 그것이 `forget`이다 (`BRAINSTORM.md` 5번):
+`blindspot forget <path>` / `--list` / `--undo`, `Blindspot: Stop Measuring This
+File`, 사이드바 인라인 휴지통. 무시 목록은 `state.json`의 `ignored`에 있다 —
+설계가 `scopes.json`을 "개인 기록이므로 저장소에 들어가지 않는다"고 한 것과 같은
+이유로, 같은 자리다.
+
+| 설계 | 실제 |
+| --- | --- |
+| `scopes.json` 선언 목록 | 없음. 연 파일이 대상 |
+| `Track This File` / `Track This Folder` | 없음. 파일을 열면 대상 |
+| 사이드바 `[x]` untrack | `Blindspot: Stop Measuring This File` + 인라인 휴지통 |
+| `blindspot track` / `untrack` | `blindspot forget` / `--undo` |
+| `blindspot read <path>` | 그대로 |
+| `maxScopeFiles` | 해당 없음 |
+| 상태표시줄 두 방향 숫자 | 모드가 하나뿐이라 한 방향. `blindspot.mode`가 고른다 |
+| 튜닝 패널 | 리포트 페이지의 임계값 슬라이더. `Apply to workspace`는 없다 |
+
+**남은 것:** 튜닝 패널의 `Apply to workspace` 버튼. 페이지는 슬라이더로 미리보기를
+하지만 저장은 설정에서 해야 한다. 미리보기와 저장값이 다를 수 있다는 §4의 경고는
+여전히 유효하므로, 버튼을 붙일 때 `preview — not saved` 배지도 함께 붙여야 한다.

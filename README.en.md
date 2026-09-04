@@ -302,6 +302,7 @@ numbers in it can never drift from the model.
 | `Blindspot: Choose What the Diff Is Measured Against` | last review / `baseRef` / any ref |
 | `Blindspot: Review Blindspot` | jump to the next unread hunk, worst risk first |
 | `Blindspot: Mark File As Reviewed` | "I read this in the GitHub UI" (also from the sidebar) |
+| `Blindspot: Stop Measuring This File` | take a file you opened by accident out of the denominator |
 | `Blindspot: Complete Review` | baseline to HEAD — reviewed up to here |
 | `Blindspot: Install pre-commit Hook` | print the card at commit time |
 | `Blindspot: Toggle Unread Line Markers` | gutter markers |
@@ -313,6 +314,9 @@ numbers in it can never drift from the model.
 blindspot check --staged            # print the card for what you are about to commit
 blindspot report                    # per-file table plus Read / Focus / Activity / Pace
 blindspot read                      # what Reading mode sees: opened files, whole. No git needed
+blindspot read src/core             # just one file or folder of it
+blindspot forget vendor/            # out of the denominator: evidence deleted, and kept out
+blindspot forget --list             # what you have forgotten; --undo <path> reverses it
 blindspot check --min-coverage 70   # exit 1 below 70% (for CI or a strict hook)
 blindspot check --json              # machine-readable
 blindspot check --staged --trailer  # the commit trailer line: Blindspot: 36% (66/182 lines unread)

@@ -377,4 +377,45 @@ describe('AttentionTracker', { concurrency: 1 }, () => {
     assert.equal(tracker.getEvidence('src/new.ts', 1)?.humanEdits, 2);
     assert.equal(tracker.files().includes('src/old.ts'), false);
   });
+
+  test('forgetting a folder takes it out of the reading target for good', () => {
+    const state = emptyState();
+    const e = { ...emptyEvidence(), focusedMs: 4000 };
+    state.files['vendor/big/a.ts'] = [{ h: hashLine('a'), i: 0, e }];
+    state.files['vendor/big/deep/b.ts'] = [{ h: hashLine('b'), i: 0, e }];
+    state.files['vendor/small.ts'] = [{ h: hashLine('c'), i: 0, e }];
+    state.files['src/app.ts'] = [{ h: hashLine('d'), i: 0, e }];
+    tracker = new AttentionTracker({ root: ROOT }, DEFAULT_CONFIG, {}, () => {});
+    tracker.start(state);
+
+    const gone = tracker.forget('vendor/big');
+    assert.deepEqual(gone, ['vendor/big/a.ts', 'vendor/big/deep/b.ts']);
+    assert.deepEqual(tracker.files().sort(), ['src/app.ts', 'vendor/small.ts']);
+    // Gone from what gets written back too, not just from this session.
+    const snap = tracker.snapshot(() => ['a']);
+    assert.equal(Object.keys(snap.files).some((f) => f.startsWith('vendor/big')), false);
+    assert.deepEqual(tracker.forget('vendor/big'), [], 'forgetting it again finds nothing left');
+    // The decision outlives the evidence: it is written back with the state.
+    assert.deepEqual([...snap.ignored], ['vendor/big']);
+    assert.deepEqual([...tracker.forgotten], ['vendor/big']);
+  });
+
+  test('a forgotten file that is still open does not walk back into the target', () => {
+    const editor = makeEditor(20, 0, 19, 5);
+    world.visibleEditors = [editor];
+    world.activeEditor = editor;
+    startTracker();
+    hold(6000);
+    assert.equal(tracker.files().includes(FILE), true, 'the open file is measured');
+
+    tracker.forget(FILE);
+    hold(6000);
+    assert.equal(tracker.files().includes(FILE), false, 'and stays out while it is open');
+    assert.equal(tracker.getEvidence(FILE, 1), undefined);
+
+    // Undo puts it back, with nothing read in it yet.
+    assert.equal(tracker.measureAgain(FILE), true);
+    hold(6000);
+    assert.equal(tracker.files().includes(FILE), true);
+  });
 });

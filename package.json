@@ -80,6 +80,11 @@
         "icon": "$(check)"
       },
       {
+        "command": "blindspot.forgetFile",
+        "title": "Blindspot: Stop Measuring This File (forget its reading)",
+        "icon": "$(trash)"
+      },
+      {
         "command": "blindspot.resetSession",
         "title": "Blindspot: Reset Review Evidence"
       },
@@ -271,6 +276,11 @@
       "view/item/context": [
         {
           "command": "blindspot.markFileReviewed",
+          "when": "view == blindspot.files && viewItem == file",
+          "group": "inline"
+        },
+        {
+          "command": "blindspot.forgetFile",
           "when": "view == blindspot.files && viewItem == file",
           "group": "inline"
         }

@@ -65,6 +65,24 @@
   full price however simple its shape. A comment is cheap; a comment saying
   `TODO`, `SAFETY`, `@ts-ignore` or `noqa` is not, because it exists to be
   acted on. Every entry has a should-be-cheap and a must-not-be-cheap test.
+- **A way out of the reading denominator.** Reading mode measures every file
+  you have opened, so one 3,000-line vendored file opened by accident took over
+  the number and stayed for a month, until the prune. `Blindspot: Stop
+  Measuring This File`, the sidebar's inline bin, and `blindspot forget <path>`
+  drop a file or a folder: the evidence is deleted, and the path is remembered
+  as forgotten, because a file still open in a tab would earn fresh evidence
+  within seconds and be back in the denominator before anyone looked. That list
+  lives beside the evidence in the state, not in the committed
+  `.blindspot/config.json` — it is one person saying what they are not reading,
+  which is the same kind of fact as the evidence, and belongs in the same
+  private place. `blindspot forget --list` shows it and `--undo` reverses it.
+- `blindspot read <path>` narrows the reading report to one file or folder, as
+  the design called for. Without a path it is unchanged.
+- A `meta.json` beside the state of a folder that is not a repository, naming
+  the folder it belongs to and when it was last written. `~/.blindspot/` is a
+  set of twelve-hex-character directories; without this, nobody can tell what
+  one is for or whether deleting it loses anything. Repositories get none —
+  `.git/blindspot` explains itself.
 - Mode-aware gutter marks: orange (red where risky) for an unread changed
   line, blue for a line you simply have not got to yet while reading.
 
