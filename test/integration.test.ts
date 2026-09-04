@@ -475,6 +475,40 @@ describe('cli against a real repository', () => {
     git(['checkout', '--', file]);
   });
 
+  test("the user's diff prefix settings do not change which file is measured", () => {
+    // diff.mnemonicPrefix labels the sides c/ i/ w/ o/ instead of a/ b/, and
+    // diff.noprefix drops them altogether. Both are cosmetic in a terminal;
+    // read back literally they gave the report a file called w/src/app.ts,
+    // and stripped the prefix off a directory that is really named `b`.
+    write('b/index.ts', ['export const inB = 1;']);
+    git(['add', 'b/index.ts']);
+    git(['commit', '-q', '-m', 'feat: a directory named b']);
+    write('b/index.ts', ['export const inB = 1;', 'export const alsoInB = 2;']);
+    write('src/app.ts', ['export const version = "9.0.0";', 'export const name = "demo";']);
+    try {
+      for (const [key, value] of [
+        ['diff.mnemonicPrefix', 'true'],
+        ['diff.noprefix', 'true'],
+      ]) {
+        git(['config', key, value]);
+        const files = reportJson().files.map((f) => f.file);
+        assert.ok(files.includes('src/app.ts'), `${key}: ${files.join(', ')}`);
+        assert.ok(files.includes('b/index.ts'), `${key}: ${files.join(', ')}`);
+        assert.equal(files.some((f) => /^[wcio]\//.test(f) || f === 'index.ts'), false, files.join(', '));
+        git(['config', '--unset', key]);
+      }
+    } finally {
+      for (const key of ['diff.mnemonicPrefix', 'diff.noprefix']) {
+        try {
+          git(['config', '--unset', key]);
+        } catch {
+          // Already unset.
+        }
+      }
+      git(['checkout', '--', 'b/index.ts', 'src/app.ts']);
+    }
+  });
+
   test('a commit that only bumps a submodule has nothing to read', () => {
     // A superproject with one file and one submodule; the submodule moves to
     // an older commit, which is the only change. Before the parser knew what

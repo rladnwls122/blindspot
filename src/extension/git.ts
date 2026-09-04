@@ -81,7 +81,21 @@ export interface DiffOptions {
  */
 export async function collectDiff(ctx: GitContext, opts: DiffOptions = {}): Promise<FileDiff[]> {
   const baseRef = opts.baseRef || 'HEAD';
-  const args = ['diff', '--unified=0', '--no-color', '--no-ext-diff', '--find-renames'];
+  // The prefixes are pinned because the parser strips exactly `a/` and `b/`.
+  // A user's `diff.mnemonicPrefix` would make every path `w/src/...` — a
+  // file that does not exist, so nothing anchors and the report names the
+  // wrong file — and `diff.noprefix` would have the parser strip a real
+  // directory called `a` or `b`. Configuration shapes what a person sees in
+  // their terminal; it must not shape what gets measured.
+  const args = [
+    'diff',
+    '--unified=0',
+    '--no-color',
+    '--no-ext-diff',
+    '--find-renames',
+    '--src-prefix=a/',
+    '--dst-prefix=b/',
+  ];
   if (opts.staged) args.push('--cached');
   args.push(baseRef, '--');
 

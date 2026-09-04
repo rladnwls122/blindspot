@@ -86,6 +86,13 @@
 
 ### Fixed
 
+- A user's `diff.mnemonicPrefix` or `diff.noprefix` setting no longer changes
+  what gets measured. The parser strips the standard `a/` and `b/` from the
+  diff header; with mnemonic prefixes every file came back as `w/src/…`, a
+  path that exists nowhere, so no evidence anchored and the report named the
+  wrong file, and with no prefix a directory really called `b` lost its name.
+  The diff is now requested with the standard prefixes pinned, whatever the
+  configuration says.
 - `install-hook` in a linked worktree (`git worktree add`) now installs where
   git runs hooks. It wrote into the worktree's own git directory,
   `.git/worktrees/<name>/hooks`, which git never reads — the hook was
