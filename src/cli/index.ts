@@ -281,13 +281,36 @@ async function readCommand(args: Args): Promise<number> {
 }
 
 /**
+ * The one spelling of a path that two sources can be compared by.
+ *
+ * Windows keeps 8.3 short names for directories, so the same folder can be
+ * `C:\\Users\\RUNNER~1\\…` or `C:\\Users\\runneradmin\\…` depending on who is
+ * asking. Falls back to the path as given when it does not exist, which is a
+ * perfectly ordinary thing for a `forget` target to be.
+ */
+function canonical(p: string): string {
+  try {
+    return fs.realpathSync.native(p);
+  } catch {
+    return p;
+  }
+}
+
+/**
  * A path the user typed, as the key the evidence is stored under: relative to
  * the workspace root, forward slashes, no trailing one. A path outside the
  * workspace comes back as given, and matches nothing — the honest outcome,
  * rather than quietly reporting on some other folder.
+ *
+ * Both sides are canonicalised first. `root` comes from
+ * `git rev-parse --show-toplevel`, which always answers with the long form,
+ * while `process.cwd()` reports whatever spelling the shell was started with.
+ * When the two disagree, `path.relative` walks up out of the repository and
+ * every path the user names matches nothing at all.
  */
 function relativeTarget(root: string, given: string): string {
-  const rel = path.relative(root, path.resolve(process.cwd(), given));
+  const abs = canonical(path.resolve(canonical(process.cwd()), given));
+  const rel = path.relative(canonical(root), abs);
   const normalized = rel.split(path.sep).join('/').replace(/\/+$/, '');
   return normalized === '' ? '.' : normalized;
 }

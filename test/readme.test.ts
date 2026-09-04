@@ -22,8 +22,14 @@ import { runScenario } from '../demo/simulate';
 const ROOT = path.resolve(__dirname, '../..');
 const READMES = ['README.md', 'README.en.md'];
 
+/**
+ * Read a README with its line endings normalised. git checks these files out
+ * with CRLF on Windows, and the renderer joins with `\n`, so comparing them
+ * raw fails on one platform for a reason that has nothing to do with the
+ * numbers this test is about.
+ */
 function read(file: string): string {
-  return fs.readFileSync(path.join(ROOT, file), 'utf8');
+  return fs.readFileSync(path.join(ROOT, file), 'utf8').split('\r\n').join('\n');
 }
 
 describe('the README quotes the model, not a mockup', () => {

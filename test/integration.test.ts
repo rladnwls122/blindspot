@@ -657,6 +657,32 @@ describe('cli against a real repository', () => {
     fs.rmSync(path.join(repo, 'src/keep.ts'));
   });
 
+  test('a path named through another spelling of the same directory still resolves', () => {
+    // git answers with one spelling of the repository root and the shell can
+    // be standing in another: a junction or symlink here, an 8.3 short name
+    // on Windows (C:\\Users\\RUNNER~1 for C:\\Users\\runneradmin). When the two
+    // disagree, path.relative walks up out of the repository and every path
+    // the user names matches nothing — silently, as "no reading recorded".
+    write('src/aliased.ts', ['const aliased = 1;', 'const also = 2;']);
+    recordAsRead('src/aliased.ts', [1]);
+
+    const link = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'blindspot-alias-')), 'repo');
+    fs.symlinkSync(repo, link, 'junction');
+    try {
+      const report = JSON.parse(
+        blindspot(['read', '--json', path.join(link, 'src', 'aliased.ts')]).stdout,
+      ) as DiffReport;
+      assert.deepEqual(
+        report.files.map((f) => f.file),
+        ['src/aliased.ts'],
+        'the same file, named the long way round',
+      );
+    } finally {
+      fs.rmSync(path.dirname(link), { recursive: true, force: true });
+      fs.rmSync(path.join(repo, 'src/aliased.ts'));
+    }
+  });
+
   test('outside a git repository it says so and does not crash', () => {
     const plain = fs.mkdtempSync(path.join(os.tmpdir(), 'blindspot-nogit-'));
     try {
