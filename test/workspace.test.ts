@@ -19,6 +19,20 @@ function tempDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'blindspot-ws-'));
 }
 
+/**
+ * The one spelling of a path that two sources can be compared by.
+ *
+ * On Windows `os.tmpdir()` hands back an 8.3 short name — CI's is
+ * `C:\Users\RUNNER~1\…` — and `fs.realpathSync` keeps it, while
+ * `git rev-parse --show-toplevel` answers with the long one,
+ * `C:\Users\runneradmin\…`. The two are the same directory and compare
+ * unequal. `realpathSync.native` asks the OS for the canonical path, which
+ * expands the short name, so both sides end up spelled the same way.
+ */
+function canonical(p: string): string {
+  return fs.realpathSync.native(path.resolve(p));
+}
+
 describe('the note beside a git-less state directory', () => {
   test('says which folder it belongs to, and when it was last written', async () => {
     // ~/.blindspot/<12 hex characters> tells whoever finds it nothing. A
@@ -31,7 +45,7 @@ describe('the note beside a git-less state directory', () => {
 
     const meta = await loadMeta(ws);
     assert.notEqual(meta, null);
-    assert.equal(meta!.root, path.resolve(folder));
+    assert.equal(canonical(meta!.root), canonical(folder));
     assert.equal(meta!.lastAccess >= before, true);
     assert.equal(fs.existsSync(metaPath(ws)), true);
   });
@@ -52,7 +66,7 @@ describe('findWorkspace', () => {
     execFileSync('git', ['init', '-q'], { cwd: repo });
     const ws = await findWorkspace(path.join(repo));
     assert.notEqual(ws.git, null);
-    assert.equal(path.resolve(ws.root), fs.realpathSync(repo));
+    assert.equal(canonical(ws.root), canonical(repo));
     // git prints forward slashes on Windows; compare resolved paths.
     assert.equal(ws.stateDir.startsWith(path.resolve(ws.git!.gitDir)), true);
   });
@@ -61,7 +75,7 @@ describe('findWorkspace', () => {
     const dir = tempDir();
     const ws = await findWorkspace(dir);
     assert.equal(ws.git, null);
-    assert.equal(ws.root, path.resolve(dir));
+    assert.equal(canonical(ws.root), canonical(dir));
     assert.equal(ws.stateDir.startsWith(path.resolve(dir)), false);
     assert.equal(ws.stateDir.startsWith(path.join(os.homedir(), '.blindspot')), true);
   });

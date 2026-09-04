@@ -2,7 +2,11 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    # Development branches too, not just main. The one platform difference
+    # that has actually broken this project — Windows — is invisible until CI
+    # runs, so a branch that has never been through it is a branch nobody can
+    # honestly call green.
+    branches: [main, 'claude/**', 'feat/**', 'fix/**']
   pull_request:
 
 jobs:
