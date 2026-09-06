@@ -2,7 +2,14 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { DEFAULT_CONFIG, type BlindspotConfig } from '../core/config';
-import { buildReport, pageData, wholeFileTarget, type ReportSources } from '../core/coverage';
+import {
+  PANEL_SETTING_KEYS,
+  buildReport,
+  pageData,
+  wholeFileTarget,
+  type PanelSettings,
+  type ReportSources,
+} from '../core/coverage';
 import { MODE_LABEL, shortRef } from '../core/labels';
 import { pct } from '../core/score';
 import type { DiffReport, FileDiff, TargetMode } from '../core/types';
@@ -187,6 +194,15 @@ function installFallbackCommands(context: vscode.ExtensionContext): void {
     );
   }
   context.subscriptions.push({ dispose: disposeFallbackCommands });
+}
+
+/**
+ * The panel's messages, delivered to whichever root owns the panel. Exported so
+ * the tests can send the messages a webview sends without standing up a
+ * webview: what a message from a page is allowed to do is worth asserting.
+ */
+export function __onPanelMessage(m: PanelMessage): Promise<void> | void {
+  return uiOwner?.handlePanelMessage(m);
 }
 
 export function deactivate(): Promise<void> | void {
@@ -432,7 +448,7 @@ class Controller implements vscode.Disposable {
         this.tree?.update(this.report);
         // The page's evidence costs another pass over every target line; only
         // pay for it while someone can see it.
-        ReportPanel.active?.update({ report, data: pageData(targets, sources, this.cfg) });
+        ReportPanel.active?.update({ report, data: pageData(targets, sources, this.cfg, this.panelSettings()) });
       }
       return this.report;
     } catch (err) {
@@ -487,7 +503,7 @@ class Controller implements vscode.Disposable {
   /** The panel's input: the last report, and the evidence behind it. */
   private panelView(): PanelView | null {
     if (!this.report) return null;
-    return { report: this.report, data: pageData(this.targets, this.makeSources(), this.cfg) };
+    return { report: this.report, data: pageData(this.targets, this.makeSources(), this.cfg, this.panelSettings()) };
   }
 
   /**
@@ -746,7 +762,7 @@ class Controller implements vscode.Disposable {
 
   private async showPanel(refreshFirst: boolean): Promise<void> {
     if (refreshFirst) await this.refresh();
-    ReportPanel.show(this.context.extensionUri, (m) => void this.onPanelMessage(m), this.panelView());
+    ReportPanel.show(this.context.extensionUri, (m) => void this.handlePanelMessage(m), this.panelView());
   }
 
   // -------------------------------------------------------------------- mode
@@ -840,7 +856,7 @@ class Controller implements vscode.Disposable {
 
   // ------------------------------------------------------------------- panel
 
-  private async onPanelMessage(m: PanelMessage): Promise<void> {
+  async handlePanelMessage(m: PanelMessage): Promise<void> {
     // The webview only ever sends back paths this extension put into its HTML,
     // but a message handler that joins an arbitrary string onto the repo root
     // and opens the result is the wrong thing to leave lying around.
@@ -865,7 +881,59 @@ class Controller implements vscode.Disposable {
         await this.refresh();
         return;
       }
+      case 'setting':
+        await this.applyPanelSetting(m.key, m.value);
+        return;
     }
+  }
+
+  /**
+   * A setting changed from the panel's own controls.
+   *
+   * The panel is a webview: what arrives here is input from a page, not a
+   * decision already made. So the key must be one this panel is allowed to
+   * touch and the value must be the shape that key takes — a message naming
+   * anything else is dropped without comment, because there is no legitimate
+   * sender for it to inform.
+   */
+  private async applyPanelSetting(key: unknown, value: unknown): Promise<void> {
+    if (typeof key !== 'string' || !PANEL_SETTING_KEYS.includes(key as never)) return;
+
+    if (key === 'mode') {
+      if (value === 'auto') {
+        await this.writeSetting('mode', 'auto');
+        await this.refresh();
+        return;
+      }
+      if (value === 'diff' || value === 'reading') await this.setMode(value);
+      return;
+    }
+
+    if (key === 'reviewThresholdPoints') {
+      const cap = Object.values(this.cfg.weights).reduce((a, b) => a + b, 0);
+      if (typeof value !== 'number' || !Number.isInteger(value) || value < 1 || value > cap) return;
+      await this.writeSetting(key, value);
+      return;
+    }
+
+    if (typeof value !== 'boolean') return;
+    if (key === 'decorateUnreviewed') {
+      this.decorations.setEnabled(value);
+      if (value) this.decorations.apply(this.report, this.root);
+    }
+    await this.writeSetting(key, value);
+  }
+
+  /** What the panel's controls show, read back from the live settings. */
+  private panelSettings(): PanelSettings {
+    const mode = this.setting<string>('mode', 'auto');
+    return {
+      mode: mode === 'diff' || mode === 'reading' ? mode : 'auto',
+      reviewThresholdPoints: this.cfg.reviewThresholdPoints,
+      decorateUnreviewed: this.setting('decorateUnreviewed', true),
+      showStatusBar: this.setting('showStatusBar', true),
+      explainOnHover: this.setting('explainOnHover', true),
+    };
   }
 
   /** Reveal a range without letting the jump itself count as reading it. */

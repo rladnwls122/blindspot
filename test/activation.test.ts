@@ -474,6 +474,40 @@ describe('activation inside a git repository', { concurrency: 1 }, () => {
     assert.deepEqual(stub.errors, []);
   });
 
+  test('the panel may set the settings it owns, and no others', async () => {
+    const repo = tempDir();
+    execFileSync('git', ['init', '-q'], { cwd: repo });
+    stub.folders = [{ uri: { fsPath: repo } }];
+    await extension.activate(fakeContext());
+
+    // The panel is a webview: a message naming a key it does not own, or a
+    // value of the wrong shape, is input from a page rather than a decision
+    // already made, and must not reach the settings.
+    const send = (key: unknown, value: unknown) => extension.__onPanelMessage({ type: 'setting', key, value });
+
+    await send('decorateUnreviewed', false);
+    assert.equal(stub.settings['decorateUnreviewed'], false);
+
+    await send('reviewThresholdPoints', 4);
+    assert.equal(stub.settings['reviewThresholdPoints'], 4);
+
+    await send('reviewThresholdPoints', 0);
+    await send('reviewThresholdPoints', 999);
+    await send('reviewThresholdPoints', '4');
+    assert.equal(stub.settings['reviewThresholdPoints'], 4, 'out-of-range and non-numbers are dropped');
+
+    await send('showStatusBar', 'yes');
+    assert.equal(stub.settings['showStatusBar'], undefined, 'a boolean setting takes only booleans');
+
+    await send('enabled', false);
+    await send('__proto__', { polluted: true });
+    await send('baseRef', 'origin/main');
+    assert.equal(stub.settings['enabled'], undefined, 'a key the panel does not own is dropped');
+    assert.equal(stub.settings['baseRef'], undefined);
+    assert.equal(({} as any).polluted, undefined);
+    assert.deepEqual(stub.errors, []);
+  });
+
   test('an explicit diff mode is left alone, and still says so when empty', async () => {
     const repo = tempDir();
     execFileSync('git', ['init', '-q'], { cwd: repo });

@@ -10,7 +10,11 @@ export type PanelMessage =
   | { type: 'reviewNext' }
   | { type: 'refresh' }
   | { type: 'completeReview' }
-  | { type: 'markReviewed'; file: string };
+  | { type: 'markReviewed'; file: string }
+  // The panel's own controls. `key` is checked against PANEL_SETTING_KEYS and
+  // `value` against the shape that key takes before either reaches settings:
+  // this arrives from a webview, so it is input, not instruction.
+  | { type: 'setting'; key: string; value: unknown };
 
 /** What the panel shows: the report for its title, the evidence for its page. */
 export interface PanelView {

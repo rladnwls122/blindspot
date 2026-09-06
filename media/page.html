@@ -4,41 +4,43 @@
  * The report panel.
  *
  * It runs in two places from one file: inside VS Code as a webview, and in a
- * browser as the demo. So every colour and both typefaces are the editor's own
- * where the editor is there to ask, and a plain fallback where it is not. A
- * panel that paints its own near-black over someone's light theme is a foreign
- * object in their workspace, and a panel that needs a font off the network is
- * one that looks wrong on a train.
+ * browser as the demo. Colours come from the editor's own theme where the
+ * editor is there to ask — a panel that paints its own black over someone's
+ * light theme is a foreign object in their workspace — and the type is the two
+ * faces already on the machine: the editor's monospace for everything measured,
+ * the UI font for everything said. Nothing is fetched.
  *
- * One saturated colour is allowed on the page, and it is the unread mark. It is
- * the orange of the gutter bar the extension already draws, so what the panel
- * says and what the editor shows are the same claim in the same colour.
+ * It is drawn as an instrument rather than a dashboard, because it is one. The
+ * single saturated colour is the unread mark, and it is the orange of the
+ * gutter bar the extension already draws, so the panel and the editor make the
+ * same claim in the same colour.
  */
 :root {
-  --bg: var(--vscode-editor-background, #fbfbfa);
-  --fg: var(--vscode-editor-foreground, #1a1d21);
-  --muted: var(--vscode-descriptionForeground, #63696f);
-  --rule: var(--vscode-widget-border, #dfe1e4);
-  --sunk: var(--vscode-editorWidget-background, #f2f2f1);
+  --bg: var(--vscode-editor-background, #fcfcfb);
+  --fg: var(--vscode-editor-foreground, #16181c);
+  --muted: var(--vscode-descriptionForeground, #6a7079);
+  --rule: var(--vscode-widget-border, #e1e3e7);
+  --sunk: var(--vscode-editorWidget-background, #f4f4f3);
   --unread: #c2410c;
   --unread-wash: #c2410c14;
   --severe: var(--vscode-errorForeground, #b42318);
   --link: var(--vscode-textLink-foreground, #0b5fb0);
+  --grid: #6a707914;
   --ui: var(--vscode-font-family, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif);
-  --code: var(--vscode-editor-font-family, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
-  --ui-size: var(--vscode-font-size, 14px);
+  --mono: var(--vscode-editor-font-family, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: var(--vscode-editor-background, #14171c);
-    --fg: var(--vscode-editor-foreground, #dfe3e8);
-    --muted: var(--vscode-descriptionForeground, #8b929c);
-    --rule: var(--vscode-widget-border, #272c33);
-    --sunk: var(--vscode-editorWidget-background, #1b1f25);
+    --bg: var(--vscode-editor-background, #131519);
+    --fg: var(--vscode-editor-foreground, #e2e5ea);
+    --muted: var(--vscode-descriptionForeground, #888f99);
+    --rule: var(--vscode-widget-border, #272b32);
+    --sunk: var(--vscode-editorWidget-background, #191c21);
     --unread: #f97316;
-    --unread-wash: #f9731620;
-    --severe: var(--vscode-errorForeground, #f2776b);
+    --unread-wash: #f9731618;
+    --severe: var(--vscode-errorForeground, #ef6a5e);
     --link: var(--vscode-textLink-foreground, #6cb6ff);
+    --grid: #888f9918;
   }
 }
 
@@ -49,270 +51,349 @@ body {
   background: var(--bg);
   color: var(--fg);
   font-family: var(--ui);
-  font-size: var(--ui-size);
+  font-size: 14px;
   line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
 }
 
-.page {
-  max-width: 62rem;
-  margin: 0 auto;
-  padding: 3.5rem 2rem 5rem;
+.page { max-width: 64rem; margin: 0 auto; padding: 3rem 2rem 4rem; }
+
+/*
+ * A label sitting on its own rule rather than floating above the content as a
+ * tracked-out caption: one device marks the section break and names it, and the
+ * right-hand slot carries whatever reading belongs to that band.
+ */
+.band {
   display: flex;
-  flex-direction: column;
-  gap: 2.75rem;
+  align-items: baseline;
+  gap: 0.9rem;
+  margin: 2.9rem 0 1rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--muted);
 }
+.band .fill { flex: 1; border-top: 1px solid var(--rule); transform: translateY(-0.25em); }
+.band .aside { font-family: var(--mono); font-size: 0.72rem; white-space: nowrap; }
+.band .name { font-family: var(--mono); color: var(--fg); }
 
 /* ------------------------------------------------------------- the answer */
 
-.answer h1 {
+.answer { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 1.4rem 3rem; }
+.answer .say { flex: 1 1 24rem; }
+
+h1 {
   margin: 0;
-  font-size: clamp(1.6rem, 1.1rem + 2vw, 2.5rem);
-  font-weight: 600;
-  letter-spacing: -0.018em;
-  line-height: 1.15;
-  max-width: 22ch;
+  font-family: var(--mono);
+  font-size: clamp(1.75rem, 1rem + 2.7vw, 2.9rem);
+  font-weight: 500;
+  letter-spacing: -0.05em;
+  line-height: 1.02;
 }
-.answer h1 .n { color: var(--unread); font-variant-numeric: tabular-nums; }
-.answer.clear h1 .n { color: inherit; }
-.answer p {
-  margin: 0.7rem 0 0;
-  color: var(--muted);
-  max-width: 52ch;
-}
+h1 .n { color: var(--unread); }
+.clear h1 .n { color: inherit; }
+h1 .rest { color: var(--muted); }
+
+.answer p { margin: 0.9rem 0 0; color: var(--muted); max-width: 44ch; }
 .answer p b { color: var(--severe); font-weight: 600; }
 
-.act {
-  margin-top: 1.4rem;
-  font: inherit;
-  font-weight: 500;
-  color: var(--bg);
-  background: var(--fg);
-  border: 1px solid var(--fg);
-  border-radius: 3px;
-  padding: 0.5rem 1rem;
+/* The controls are an instrument's, not a web form's: ruled, not filled. */
+.act, .seg button, .flag {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  padding: 0.5rem 0.85rem;
   cursor: pointer;
 }
-.act:hover { opacity: 0.86; }
-.act:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
+.act { color: var(--fg); border-color: var(--fg); white-space: nowrap; }
+.act:hover { background: var(--fg); color: var(--bg); }
+.act:focus-visible, .seg button:focus-visible, .flag:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 2px;
+}
 
-/* ---------------------------------------------------------------- the map */
+/* ------------------------------------------------------------ the reading */
 
 /*
- * Every target line of the whole change, one bar each, files side by side and
- * as wide as they are long. A percentage cannot tell you whether the part you
- * missed is scattered through the diff or is one block you skipped; this can,
- * at a glance, which is the only thing this panel has to do quickly.
+ * Every target line of the change, plotted by the points its evidence earned,
+ * with the review threshold ruled across it. Everything under that rule is the
+ * blindspot — so moving the threshold moves the rule, and what the setting
+ * means stops being a sentence and becomes a picture.
  */
-.map { display: flex; flex-direction: column; gap: 0.5rem; }
-.map-strip { display: flex; gap: 3px; height: 4.5rem; }
-.map-file {
-  display: flex;
-  gap: 0;
-  min-width: 4px;
-  background: var(--sunk);
-  border: 1px solid transparent;
+.chart {
+  position: relative;
+  border: 1px solid var(--rule);
   border-radius: 2px;
-  overflow: hidden;
-  padding: 0;
-  cursor: pointer;
+  background: var(--sunk);
 }
-.map-file:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
-.map-file[aria-pressed="true"] { border-color: var(--fg); }
-.map-file i { flex: 1 1 0; min-width: 1px; }
-.map-file i.read { background: var(--muted); opacity: 0.3; }
-.map-file i.unread { background: var(--unread); }
-.map-file i.unread.severe { background: var(--severe); }
-.map-legend {
-  display: flex;
-  gap: 3px;
-  font-size: 0.75rem;
+.plotwrap { position: relative; padding-left: 2.1rem; }
+.chart svg { display: block; width: 100%; height: 10.5rem; }
+
+/* The scale the bars are read against: the ceiling, the rule, and nothing. */
+.ticks {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2.1rem;
+  font-family: var(--mono);
+  font-size: 0.66rem;
   color: var(--muted);
-  font-family: var(--code);
+  border-right: 1px solid var(--rule);
 }
-.map-legend span {
-  min-width: 4px;
+.ticks span { position: absolute; right: 0.4rem; transform: translateY(-50%); }
+.ticks .thr { color: var(--unread); }
+.readout {
+  position: absolute;
+  top: 0.6rem;
+  right: 0.8rem;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--muted);
+  pointer-events: none;
+  background: var(--sunk);
+  padding: 0 0.3rem;
+  border-radius: 2px;
+  z-index: 1;
+}
+.readout b { color: var(--fg); font-weight: 500; }
+
+.axis {
+  display: flex;
+  border-top: 1px solid var(--rule);
+  font-family: var(--mono);
+  font-size: 0.7rem;
+}
+.axis button {
+  min-width: 0;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+  text-align: left;
+  font: inherit;
+  color: var(--muted);
+  background: none;
+  border: 0;
+  border-left: 1px solid var(--rule);
+  padding: 0.5rem;
+  cursor: pointer;
 }
+.axis button:first-child { border-left: 0; }
+.axis button:hover { color: var(--fg); }
+.axis button[aria-pressed="true"] { color: var(--fg); background: var(--unread-wash); }
+.axis button:focus-visible { outline: 2px solid var(--link); outline-offset: -2px; }
+
+/* Drawn once on open, left to right, and never again. */
+.sweep { animation: sweep 640ms cubic-bezier(0.22, 0.61, 0.36, 1) both; }
+@keyframes sweep { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
 
 /* -------------------------------------------------------------- the files */
 
-/* Fixed layout so the numbers keep their place: the file column takes what is
-   left, and a column whose header is hidden on a narrow panel is gone rather
-   than reserved. */
 .files { width: 100%; border-collapse: collapse; table-layout: fixed; }
-.files th.n { width: 6rem; }
-.files th.risk { width: 15rem; }
 .files th {
   text-align: left;
   font-weight: 400;
-  font-size: 0.8rem;
+  font-size: 0.76rem;
   color: var(--muted);
-  padding: 0 1.25rem 0.5rem 0;
-  border-bottom: 1px solid var(--rule);
+  padding: 0 1rem 0.5rem 0;
+  border-bottom: 1px solid var(--fg);
 }
+.files th.n { width: 6rem; }
+.files th.risk { width: 15rem; }
 .files th.n, .files td.n { text-align: right; font-variant-numeric: tabular-nums; }
 .files th:last-child, .files td:last-child { padding-right: 0; }
 .files td {
-  padding: 0.55rem 1.25rem 0.55rem 0;
+  padding: 0.55rem 1rem 0.55rem 0;
   border-bottom: 1px solid var(--rule);
   vertical-align: baseline;
 }
 .files tbody tr { cursor: pointer; }
-.files tbody tr:hover td { background: var(--sunk); }
+.files tbody tr:hover td { background: var(--grid); }
 .files tbody tr[aria-selected="true"] td { background: var(--unread-wash); }
 .files td.path {
-  font-family: var(--code); font-size: 0.86rem; overflow-wrap: anywhere;
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+  padding-left: 0.6rem;
+  box-shadow: inset 2px 0 0 transparent;
 }
-.files td.n { font-family: var(--code); font-size: 0.86rem; }
-.files td.n.some { color: var(--unread); }
-.files .of { color: var(--muted); }
-.files td.risk { font-size: 0.82rem; color: var(--muted); }
-.files td.risk.severe { color: var(--severe); }
-.files tr.done td.path { color: var(--muted); }
+.files tr[aria-selected="true"] td.path { box-shadow: inset 2px 0 0 var(--unread); }
+.files td.n { font-family: var(--mono); font-size: 0.86rem; }
+.files td.n .u { color: var(--unread); }
+.files td.n .u.sev { color: var(--severe); }
+.files td.n .of { color: var(--muted); font-size: 0.76rem; }
+.files td.risk { font-size: 0.8rem; color: var(--muted); }
+.files td.risk.sev { color: var(--severe); }
+.files tr.done td.path, .files tr.done td.n { color: var(--muted); }
 
 /* --------------------------------------------------------------- the code */
 
 .code {
-  font-family: var(--code);
-  font-size: 0.82rem;
-  line-height: 1.7;
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  line-height: 1.75;
+  border: 1px solid var(--rule);
+  border-radius: 2px;
   background: var(--sunk);
-  border-radius: 3px;
   overflow-x: auto;
-  padding: 0.75rem 0;
+  padding: 0.55rem 0;
 }
-.ln { display: grid; grid-template-columns: 3.75rem 1fr; }
+.ln { display: grid; grid-template-columns: 3.4rem 1fr; }
 .ln .num {
   text-align: right;
-  padding-right: 1rem;
+  padding-right: 0.85rem;
+  margin-right: 0.85rem;
+  border-right: 1px solid var(--rule);
   color: var(--muted);
-  opacity: 0.55;
+  opacity: 0.6;
   user-select: none;
 }
 .ln .txt { white-space: pre; padding-right: 1.5rem; }
-.ln.unread { background: var(--unread-wash); box-shadow: inset 3px 0 0 var(--unread); }
-.ln.unread.severe { box-shadow: inset 3px 0 0 var(--severe); }
-.ln.unread .num { color: var(--unread); opacity: 1; }
-.ln.read .txt { opacity: 0.45; }
+.ln.unread { background: var(--unread-wash); }
+.ln.unread .num {
+  color: var(--unread);
+  opacity: 1;
+  border-right: 2px solid var(--unread);
+  margin-right: calc(0.85rem - 1px);
+}
+.ln.unread.sev .num { color: var(--severe); border-right-color: var(--severe); }
+.ln.read .txt { opacity: 0.5; }
 .vscode .ln.unread { cursor: pointer; }
-.caption { margin: 0.6rem 0 0; font-size: 0.82rem; color: var(--muted); }
+.caption { margin: 0.6rem 0 0; font-family: var(--mono); font-size: 0.73rem; color: var(--muted); }
 
-/* --------------------------------------------------------- the definition */
+/* ------------------------------------------------------------ the settings */
 
-.rule { border: 0; border-top: 1px solid var(--rule); margin: 0; }
-
-.def { display: flex; flex-direction: column; gap: 0.9rem; }
-.def h2 { margin: 0; font-size: 1rem; font-weight: 600; }
-.slider { display: flex; align-items: center; gap: 1rem; max-width: 34rem; }
-.slider input { flex: 1; accent-color: var(--unread); }
+.settings { display: grid; grid-template-columns: minmax(17rem, 23rem) 1fr; gap: 2.5rem; }
+.control + .control { margin-top: 1.6rem; }
+.control > .lab { font-size: 0.8rem; color: var(--muted); display: block; margin-bottom: 0.5rem; }
+.slider { display: flex; align-items: center; gap: 0.9rem; }
+.slider input { flex: 1; min-width: 0; accent-color: var(--unread); }
 .slider output {
-  font-family: var(--code);
-  font-size: 0.86rem;
+  font-family: var(--mono);
+  font-size: 0.8rem;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
-.def p { margin: 0; color: var(--muted); max-width: 60ch; }
-.def p .n { color: var(--fg); font-variant-numeric: tabular-nums; }
+.hint { margin: 0.5rem 0 0; color: var(--muted); font-size: 0.8rem; max-width: 38ch; }
+.hint .n { color: var(--fg); font-variant-numeric: tabular-nums; }
 
-details summary {
-  cursor: pointer;
-  color: var(--link);
-  font-size: 0.9rem;
-  width: fit-content;
-}
-details summary:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
-details[open] summary { margin-bottom: 1rem; }
+.seg { display: flex; }
+.seg button { border-radius: 0; border-left-width: 0; flex: 1; text-align: center; }
+.seg button:first-child { border-left-width: 1px; border-radius: 2px 0 0 2px; }
+.seg button:last-child { border-radius: 0 2px 2px 0; }
+.seg button[aria-pressed="true"] { color: var(--bg); background: var(--fg); border-color: var(--fg); }
 
-.kv { width: 100%; border-collapse: collapse; margin-bottom: 1.5rem; }
-.kv:last-child { margin-bottom: 0; }
-.kv caption {
-  text-align: left;
-  font-size: 0.82rem;
-  color: var(--muted);
-  padding-bottom: 0.4rem;
+.flags { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.flag::before {
+  content: "";
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  margin-right: 0.5rem;
+  border-radius: 50%;
+  background: var(--rule);
+  vertical-align: 0.02em;
 }
+.flag[aria-pressed="true"] { color: var(--fg); border-color: var(--muted); }
+.flag[aria-pressed="true"]::before { background: var(--unread); }
+
+.kv { width: 100%; border-collapse: collapse; }
+.kv + .kv { margin-top: 1.5rem; }
 .kv td {
-  padding: 0.4rem 1.25rem 0.4rem 0;
+  padding: 0.35rem 1rem 0.35rem 0;
   border-top: 1px solid var(--rule);
   vertical-align: baseline;
-  font-size: 0.86rem;
+  font-size: 0.82rem;
 }
+.kv tr:first-child td { border-top: 0; }
 .kv td:last-child { padding-right: 0; }
-.kv td.k { font-family: var(--code); width: 9rem; }
+.kv td.k { font-family: var(--mono); width: 8.5rem; }
 .kv td.v { color: var(--muted); }
-.kv td.pts { font-family: var(--code); text-align: right; width: 3rem; }
+.kv td.pts { font-family: var(--mono); text-align: right; width: 3rem; color: var(--muted); }
 
-@media (min-width: 40.001rem) {
-  .files .of { display: none; }
-}
-@media (max-width: 40rem) {
-  .page { padding: 2rem 1.1rem 3rem; gap: 2rem; }
-  .map-strip { height: 3rem; }
-  .map-legend { display: none; }
+@media (max-width: 46rem) {
+  .page { padding: 2rem 1.1rem 3rem; }
+  .settings { grid-template-columns: 1fr; gap: 1.6rem; }
   .files .risk, .files .changed { display: none; }
+  .chart svg { height: 8rem; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  * { transition: none !important; animation: none !important; }
+  .sweep { animation: none; }
 }
 </style>
 
 <div class="page">
 
 <section class="answer" id="answer">
-  <h1 id="head"></h1>
-  <p id="sub"></p>
+  <div class="say">
+    <h1 id="head"></h1>
+    <p id="sub"></p>
+  </div>
   <button class="act" id="go" type="button">Go to the first unread line</button>
 </section>
 
-<section class="map" id="map" aria-label="Every changed line, by file">
-  <div class="map-strip" id="strip"></div>
-  <div class="map-legend" id="strip-labels" aria-hidden="true"></div>
-</section>
-
-<section>
-  <table class="files">
-    <thead>
-      <tr>
-        <th>File</th>
-        <th class="n">Unread</th>
-        <th class="n changed">Changed</th>
-        <th class="risk">Riskiest thing you missed</th>
-      </tr>
-    </thead>
-    <tbody id="files"></tbody>
-  </table>
-</section>
-
-<section>
-  <div class="code" id="code"></div>
-  <p class="caption" id="caption"></p>
-</section>
-
-<hr class="rule">
-
-<section class="def">
-  <h2>What counts as read</h2>
-  <div class="slider">
-    <input type="range" id="thr" min="1" max="6" step="1" value="3"
-           aria-label="Points a line needs before it counts as read">
-    <output id="thr-out" for="thr"></output>
+<h2 class="band">Points earned, line by line<span class="fill"></span><span class="aside" id="scale"></span></h2>
+<div class="chart">
+  <div class="plotwrap">
+    <div class="readout" id="readout"></div>
+    <div class="ticks" aria-hidden="true">
+      <span class="cap" id="tk-cap" style="top:0.5rem"></span>
+      <span class="thr" id="tk-thr"></span>
+      <span class="zero" style="bottom:0.1rem">0</span>
+    </div>
+    <svg id="plot" preserveAspectRatio="none" aria-hidden="true"></svg>
   </div>
-  <p id="thr-note"></p>
-  <details>
-    <summary>How a line earns its points</summary>
-    <table class="kv">
-      <caption>Signals, and what each is worth here</caption>
-      <tbody id="signal-rows"></tbody>
-    </table>
-    <table class="kv">
-      <caption>The settings this report was measured under</caption>
-      <tbody id="setting-rows"></tbody>
-    </table>
-  </details>
-</section>
+  <div class="axis" id="axis"></div>
+</div>
+
+<h2 class="band">Files, worst first<span class="fill"></span></h2>
+<table class="files">
+  <thead>
+    <tr>
+      <th>File</th>
+      <th class="n">Unread</th>
+      <th class="n changed">Changed</th>
+      <th class="risk">Riskiest thing you missed</th>
+    </tr>
+  </thead>
+  <tbody id="files"></tbody>
+</table>
+
+<h2 class="band"><span class="name" id="code-name"></span><span class="fill"></span><span class="aside" id="caption"></span></h2>
+<div class="code" id="code"></div>
+
+<h2 class="band">Settings<span class="fill"></span><span class="aside">saved to this workspace</span></h2>
+<div class="settings">
+  <div>
+    <div class="control">
+      <span class="lab" id="thr-lab">Points a line needs before it counts as read</span>
+      <div class="slider">
+        <input type="range" id="thr" min="1" max="6" step="1" value="3" aria-labelledby="thr-lab">
+        <output id="thr-out" for="thr"></output>
+      </div>
+      <p class="hint" id="thr-note"></p>
+    </div>
+
+    <div class="control">
+      <span class="lab" id="mode-lab">What to measure</span>
+      <div class="seg" role="group" aria-labelledby="mode-lab" id="mode"></div>
+      <p class="hint" id="mode-note"></p>
+    </div>
+
+    <div class="control">
+      <span class="lab">Where the report shows up</span>
+      <div class="flags" id="flags"></div>
+    </div>
+  </div>
+
+  <div>
+    <table class="kv"><tbody id="signal-rows"></tbody></table>
+    <table class="kv"><tbody id="setting-rows"></tbody></table>
+  </div>
+</div>
 
 </div>
 
@@ -321,8 +402,10 @@ details[open] summary { margin-bottom: 1rem; }
 // browser it is the demo and cannot.
 const vscode = typeof acquireVsCodeApi === 'function' ? acquireVsCodeApi() : null;
 
-let DATA, W, LINES;
+let DATA, W, LINES, CAP;
 const RISK_RANK = { critical: 4, high: 3, medium: 2, low: 1 };
+/** Columns the plot draws at most; past this, lines share one. */
+const MAX_COLS = 900;
 
 // ------------------------------------------------------------------- model
 
@@ -344,24 +427,23 @@ function index(data) {
     lines: f.lines.map(l => ({
       ...l,
       points: pointsOf(l.signals),
-      severe: l.risk === 'critical' || l.risk === 'high',
+      sev: l.risk === 'critical' || l.risk === 'high',
     })),
   }));
 }
 
 function compute(threshold) {
-  let total = 0, unseen = 0, severeTotal = 0, severeUnseen = 0;
+  let total = 0, unseen = 0, sevTotal = 0, sevUnseen = 0;
   const files = [];
-
   for (const f of LINES) {
     const missed = [];
     for (const l of f.lines) {
       total++;
-      if (l.severe) severeTotal++;
+      if (l.sev) sevTotal++;
       if (!isRead(l, threshold)) {
         missed.push(l);
         unseen++;
-        if (l.severe) severeUnseen++;
+        if (l.sev) sevUnseen++;
       }
     }
     files.push({
@@ -372,8 +454,7 @@ function compute(threshold) {
       hunks: groupHunks(missed),
     });
   }
-
-  return { total, unseen, severeTotal, severeUnseen, files };
+  return { total, unseen, sevTotal, sevUnseen, files };
 }
 
 function groupHunks(unseen) {
@@ -397,7 +478,7 @@ function groupHunks(unseen) {
 }
 
 const maxRisk = ls => ls.reduce((best, l) => (RISK_RANK[l] > RISK_RANK[best] ? l : best), 'low');
-const severe = r => r === 'critical' || r === 'high';
+const isSev = r => r === 'critical' || r === 'high';
 const plural = (n, one, many) => n + ' ' + (n === 1 ? one : many);
 
 function rank(files) {
@@ -418,6 +499,7 @@ function escapeHtml(s) {
 let threshold = 3;
 let selected = null;
 let state = null;
+let drawn = false;
 
 const $ = id => document.getElementById(id);
 
@@ -425,18 +507,18 @@ function renderAnswer() {
   const clear = state.unseen === 0;
   $('answer').classList.toggle('clear', clear);
   $('head').innerHTML = clear
-    ? 'You read every changed line.'
+    ? 'Every line read'
     : '<span class="n">' + state.unseen + '</span> ' +
-      (state.unseen === 1 ? 'line you did not read' : 'lines you did not read');
+      '<span class="rest">' + (state.unseen === 1 ? 'line unread' : 'lines unread') + '</span>';
 
   if (clear) {
     $('sub').textContent = 'All ' + plural(state.total, 'changed line', 'changed lines') +
-      ' cleared the threshold below.';
+      ' cleared the threshold.';
   } else {
-    const parts = ['of ' + plural(state.total, 'changed line', 'changed lines') + '.'];
-    if (state.severeUnseen > 0) {
-      parts.push('<b>' + state.severeUnseen + ' of them in high-risk code.</b>');
-    } else if (state.severeTotal > 0) {
+    const parts = ['Out of ' + plural(state.total, 'changed line', 'changed lines') + '.'];
+    if (state.sevUnseen > 0) {
+      parts.push('<b>' + state.sevUnseen + ' of them in high-risk code.</b>');
+    } else if (state.sevTotal > 0) {
       parts.push('None of them in the high-risk code.');
     }
     $('sub').innerHTML = parts.join(' ');
@@ -444,43 +526,122 @@ function renderAnswer() {
   $('go').hidden = clear || !vscode;
 }
 
-function renderMap() {
-  const ranked = state.files;
-  $('strip').innerHTML = ranked.map(f => {
+/**
+ * One column per line where they fit, otherwise one column per group carrying
+ * the worst line in it — a long diff loses resolution rather than honesty.
+ */
+function columns() {
+  const flat = [];
+  const bounds = [];
+  for (const f of state.files) {
     const src = LINES.find(x => x.path === f.path);
-    const bars = src.lines.map(l => {
-      const read = isRead(l, threshold);
-      return '<i class="' + (read ? 'read' : 'unread' + (l.severe ? ' severe' : '')) + '"></i>';
-    }).join('');
-    return '<button class="map-file" type="button" style="flex:' + f.changed + ' 1 0"' +
-      ' data-file="' + escapeHtml(f.path) + '"' +
-      ' aria-pressed="' + (f.path === selected) + '"' +
-      ' title="' + escapeHtml(f.path + ' — ' + f.unseen + ' of ' + f.changed + ' unread') + '">' +
-      bars + '</button>';
+    bounds.push({ path: f.path, from: flat.length, count: src.lines.length });
+    for (const l of src.lines) flat.push({ ...l, file: f.path });
+  }
+  const step = Math.max(1, Math.ceil(flat.length / MAX_COLS));
+  const cols = [];
+  for (let i = 0; i < flat.length; i += step) {
+    const group = flat.slice(i, i + step);
+    let worst = group[0];
+    for (const l of group) if (l.points < worst.points) worst = l;
+    cols.push({
+      points: worst.points,
+      sev: group.some(l => l.sev),
+      line: worst.n,
+      file: worst.file,
+    });
+  }
+  return { cols, bounds, step };
+}
+
+function renderPlot() {
+  const { cols, bounds, step } = columns();
+  const H = 100;
+  const w = Math.max(cols.length, 1);
+  const y = v => H - (v / CAP) * H;
+
+  let grid = '';
+  for (let p = 1; p <= CAP; p++) {
+    grid += '<line x1="0" x2="' + w + '" y1="' + y(p) + '" y2="' + y(p) +
+      '" stroke="var(--grid)" stroke-width="0.6"/>';
+  }
+
+  const marks = bounds.slice(1).map(b => {
+    const x = Math.round(b.from / step);
+    return '<line x1="' + x + '" x2="' + x + '" y1="0" y2="' + H +
+      '" stroke="var(--rule)" stroke-width="1"/>';
   }).join('');
 
-  $('strip-labels').innerHTML = ranked.map(f =>
-    '<span style="flex:' + f.changed + ' 1 0">' +
-    escapeHtml(f.path.split('/').pop()) + '</span>').join('');
+  const bars = cols.map((c, i) => {
+    const below = c.points < threshold;
+    const h = Math.max(H - y(c.points), below ? 2 : 1);
+    const fill = below ? (c.sev ? 'var(--severe)' : 'var(--unread)') : 'var(--muted)';
+    return '<rect x="' + i + '" y="' + (H - h) + '" width="1" height="' + h +
+      '" fill="' + fill + '" opacity="' + (below ? 1 : 0.22) + '"/>';
+  }).join('');
 
-  for (const b of $('strip').querySelectorAll('.map-file')) {
+  const ty = y(threshold);
+  const rule = '<line x1="0" x2="' + w + '" y1="' + ty + '" y2="' + ty +
+    '" stroke="var(--unread)" stroke-width="0.9" stroke-dasharray="3 2"/>';
+
+  const plot = $('plot');
+  plot.setAttribute('viewBox', '0 0 ' + w + ' ' + H);
+  plot.innerHTML = '<g shape-rendering="crispEdges">' + grid + marks + bars + '</g>' + rule;
+  if (!drawn) { plot.classList.add('sweep'); drawn = true; }
+
+  $('scale').textContent = 'pass at ' + threshold + ' of ' + CAP;
+  $('tk-cap').textContent = CAP;
+  $('tk-thr').textContent = threshold;
+  $('tk-thr').style.top = (100 - (threshold / CAP) * 100) + '%';
+
+  $('axis').innerHTML = bounds.map(b =>
+    '<button type="button" style="flex:' + b.count + ' 1 0"' +
+    ' data-file="' + escapeHtml(b.path) + '"' +
+    ' aria-pressed="' + (b.path === selected) + '"' +
+    ' title="' + escapeHtml(b.path) + '">' +
+    escapeHtml(b.path.split('/').pop()) + '</button>').join('');
+  for (const b of $('axis').querySelectorAll('button')) {
     b.addEventListener('click', () => select(b.dataset.file));
   }
+
+  bindReadout(cols, w);
+}
+
+/** Pointing at the plot reads out the line under the pointer, as a gauge would. */
+function bindReadout(cols, w) {
+  const plot = $('plot');
+  const idle = () => {
+    $('readout').innerHTML = '<b>' + state.unseen + '</b> under the rule';
+  };
+  idle();
+  plot.onpointerleave = idle;
+  plot.onpointermove = e => {
+    const box = plot.getBoundingClientRect();
+    if (!box.width) return;
+    const i = Math.min(cols.length - 1,
+      Math.max(0, Math.floor(((e.clientX - box.left) / box.width) * w)));
+    const c = cols[i];
+    $('readout').innerHTML = escapeHtml(c.file.split('/').pop()) + ':' + c.line +
+      '  <b>' + c.points + '</b>/' + CAP;
+  };
 }
 
 function renderFiles() {
-  $('files').innerHTML = state.files.map(f =>
-    '<tr data-file="' + escapeHtml(f.path) + '"' +
+  $('files').innerHTML = state.files.map(f => {
+    const sev = f.unseen > 0 && isSev(f.risk);
+    return '<tr data-file="' + escapeHtml(f.path) + '"' +
       ' aria-selected="' + (f.path === selected) + '"' +
       (f.unseen ? '' : ' class="done"') + '>' +
       '<td class="path">' + escapeHtml(f.path) + '</td>' +
-      '<td class="n' + (f.unseen ? ' some' : '') + '">' + f.unseen +
+      '<td class="n">' + (f.unseen
+        ? '<span class="u' + (sev ? ' sev' : '') + '">' + f.unseen + '</span>'
+        : '0') +
         '<span class="of"> / ' + f.changed + '</span></td>' +
       '<td class="n changed">' + f.changed + '</td>' +
-      '<td class="risk' + (f.unseen && severe(f.risk) ? ' severe' : '') + '">' +
+      '<td class="risk' + (sev ? ' sev' : '') + '">' +
         (f.unseen ? escapeHtml(f.hunks[0].reason) : 'nothing') + '</td>' +
-    '</tr>').join('');
-
+    '</tr>';
+  }).join('');
   for (const row of $('files').querySelectorAll('tr[data-file]')) {
     row.addEventListener('click', () => select(row.dataset.file));
   }
@@ -490,21 +651,23 @@ function renderCode() {
   const file = LINES.find(f => f.path === selected);
   if (!file) {
     $('code').innerHTML = '';
-    $('caption').textContent = 'Nothing has been opened here yet.';
+    $('code-name').textContent = 'Lines';
+    $('caption').textContent = 'nothing opened here yet';
     return;
   }
   $('code').innerHTML = file.lines.map(l => {
     const read = isRead(l, threshold);
-    const cls = read ? 'read' : 'unread' + (l.severe ? ' severe' : '');
+    const cls = read ? 'read' : 'unread' + (l.sev ? ' sev' : '');
     return '<div class="ln ' + cls + '" data-line="' + l.n + '">' +
       '<span class="num">' + l.n + '</span>' +
       '<span class="txt">' + escapeHtml(l.text || ' ') + '</span></div>';
   }).join('');
 
   const f = state.files.find(x => x.path === selected);
+  $('code-name').textContent = f.path;
   $('caption').textContent = f.unseen
-    ? f.path + ' — ' + f.unseen + ' of ' + f.changed + ' lines unread'
-    : f.path + ' — all ' + f.changed + ' lines read';
+    ? f.unseen + ' of ' + f.changed + ' unread, in ' + plural(f.hunks.length, 'run', 'runs')
+    : 'all ' + f.changed + ' read';
 
   if (!vscode) return;
   for (const ln of $('code').querySelectorAll('.ln.unread')) {
@@ -513,22 +676,62 @@ function renderCode() {
   }
 }
 
+// ---------------------------------------------------------------- settings
+
+/** Ask the extension to write a setting. Nothing changes here until it says so. */
+function put(key, value) {
+  if (vscode) vscode.postMessage({ type: 'setting', key, value });
+}
+
+const MODES = [
+  ['auto', 'Auto', 'The diff in a git repository, reading anywhere else.'],
+  ['diff', 'Diff', 'The lines you changed, since your last completed review.'],
+  ['reading', 'Reading', 'Every line of every file you have opened here.'],
+];
+
+const FLAGS = [
+  ['decorateUnreviewed', 'Gutter marks'],
+  ['showStatusBar', 'Status bar'],
+  ['explainOnHover', 'Explain on hover'],
+];
+
 function renderThreshold() {
-  const cap = Object.values(W).reduce((a, b) => a + b, 0);
-  $('thr-out').textContent = threshold + ' of ' + cap + ' points';
-  $('thr-note').innerHTML = 'At <span class="n">' + threshold + '</span> points, ' +
-    '<span class="n">' + state.unseen + '</span> of ' +
-    '<span class="n">' + state.total + '</span> lines count as unread. ' +
-    'This preview leaves your setting alone.';
+  const saved = DATA.panel.reviewThresholdPoints;
+  $('thr-out').textContent = threshold + ' of ' + CAP;
+  const tail = threshold === saved
+    ? 'Saved.'
+    : 'Release to save. Your setting is still <span class="n">' + saved + '</span>.';
+  $('thr-note').innerHTML = '<span class="n">' + state.unseen + '</span> of ' +
+    '<span class="n">' + state.total + '</span> lines fall under the rule here. ' + tail;
+}
+
+function renderModes() {
+  const current = DATA.panel.mode;
+  $('mode').innerHTML = MODES.map(([value, label]) =>
+    '<button type="button" data-mode="' + value + '" aria-pressed="' +
+    (value === current) + '">' + label + '</button>').join('');
+  for (const b of $('mode').querySelectorAll('button')) {
+    b.addEventListener('click', () => put('mode', b.dataset.mode));
+  }
+  $('mode-note').textContent = (MODES.find(m => m[0] === current) || MODES[0])[2];
+}
+
+function renderFlags() {
+  $('flags').innerHTML = FLAGS.map(([key, label]) =>
+    '<button class="flag" type="button" data-key="' + key + '" aria-pressed="' +
+    (DATA.panel[key] === true) + '">' + label + '</button>').join('');
+  for (const b of $('flags').querySelectorAll('button')) {
+    b.addEventListener('click', () => put(b.dataset.key, b.getAttribute('aria-pressed') !== 'true'));
+  }
 }
 
 const SIGNALS = [
   ['visible', s => 'on screen for ' + ms(s.visibleMsForPoint) + ' or more'],
   ['focused', s => 'in the active editor, window focused, for ' + ms(s.focusedMsForPoint)],
   ['dwell', s => 'the viewport held still for ' + ms(s.dwellMs)],
-  ['caret', () => 'you put the cursor on it, or the mouse came to rest on it'],
+  ['caret', () => 'the cursor landed on it, or the mouse came to rest'],
   ['edited', () => 'you typed it yourself'],
-  ['revisit', s => 'you came back to it after ' + ms(s.revisitGapMs) + ' away'],
+  ['revisit', s => 'you came back after ' + ms(s.revisitGapMs) + ' away'],
 ];
 
 function ms(v) {
@@ -548,7 +751,6 @@ function renderDefinition() {
     '<td class="pts">+' + escapeHtml(W[name] || 0) + '</td></tr>').join('');
 
   const rows = [
-    ['threshold', DATA.threshold + ' points, from blindspot.reviewThresholdPoints'],
     ['read after', ms(cfg.readAckMs) + ' of focused time on the line'],
     ['focus caps', 'credit stops growing after ' + ms(cfg.focusCapMs)],
     ['idle after', ms(cfg.idleAfterMs) + ' with no caret, scroll, mouse or edit'],
@@ -556,8 +758,8 @@ function renderDefinition() {
       ? 'past ' + cfg.maxLinesPerSecond + ' lines a second, nothing counts'
       : 'off'],
     ['focus falloff', cfg.focalModel
-      ? 'full credit within ' + cfg.focalSpanLines + ' lines, down to ' +
-        cfg.peripheralFloor + ' by ' + cfg.focalDecayLines
+      ? 'full within ' + cfg.focalSpanLines + ' lines, down to ' + cfg.peripheralFloor +
+        ' by ' + cfg.focalDecayLines
       : 'off, every visible line credited alike'],
     ['line cost', cfg.contentScaling ? 'thresholds scale with tokens on the line' : 'off'],
   ];
@@ -568,7 +770,7 @@ function renderDefinition() {
 
 function select(path) {
   selected = path;
-  renderMap();
+  renderPlot();
   renderFiles();
   renderCode();
 }
@@ -580,17 +782,21 @@ function renderAll() {
     selected = state.files.length ? state.files[0].path : null;
   }
   renderAnswer();
-  renderMap();
+  renderPlot();
   renderFiles();
   renderCode();
   renderThreshold();
+  renderModes();
+  renderFlags();
   renderDefinition();
 }
 
+// Dragging previews; letting go is what asks for the change.
 $('thr').addEventListener('input', e => {
   threshold = Number(e.target.value);
   renderAll();
 });
+$('thr').addEventListener('change', e => put('reviewThresholdPoints', Number(e.target.value)));
 
 $('go').addEventListener('click', () => {
   if (vscode) vscode.postMessage({ type: 'reviewNext' });
@@ -601,8 +807,10 @@ if (vscode) document.documentElement.classList.add('vscode');
 function load(data) {
   DATA = data;
   W = data.weights;
+  CAP = Object.values(W).reduce((a, b) => a + b, 0);
   LINES = index(data);
   threshold = data.threshold;
+  $('thr').max = String(CAP);
   $('thr').value = String(threshold);
   renderAll();
 }

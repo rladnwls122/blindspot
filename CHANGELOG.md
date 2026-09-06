@@ -91,6 +91,37 @@
   sidebar and the markers as if it were live. Both now clear, and the sidebar
   says tracking is off.
 
+## [0.3.4] — 2026-09-06
+
+### Added
+
+- **The panel's own settings.** What used to be a preview slider and a read-only
+  table is now where the settings actually live: the review threshold saves when
+  you let go of it, the mode is a Auto / Diff / Reading switch, and the three
+  places the report shows up — the gutter marks, the status bar, the hover
+  explanation — are toggles. They write to the workspace settings, so the panel
+  and `settings.json` cannot disagree.
+  The panel is a webview, so what it sends is treated as input: a message naming
+  a key outside the allowlist, or carrying a value of the wrong shape or a
+  threshold outside the points available, is dropped.
+
+### Changed
+
+- **The report is drawn as the instrument it is.** Every target line is plotted
+  by the points its evidence earned, against a scale, with the review threshold
+  ruled across it — so the blindspot is everything under the rule, and moving
+  the threshold moves the rule. What the setting means stops being a sentence
+  and becomes a picture. The plot replaces the read/unread strip, which said
+  less with two graphics than this says with one; pointing at it reads out the
+  line under the pointer, and the file bands under it select a file.
+- Section labels sit on their own rule rather than floating above the content as
+  tracked-out captions, the headline and every measured number are set in the
+  editor's monospace against the UI font for prose, and the code view marks
+  unread runs in a ruled gutter the way the editor itself does.
+- The demo page is written with the same doctype and head the panel wraps the
+  template in. Without it the demo rendered in quirks mode and laid the plot out
+  to different rules than the panel it is supposed to be showing.
+
 ## [0.3.3] — 2026-09-06
 
 ### Changed

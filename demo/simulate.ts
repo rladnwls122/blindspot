@@ -309,7 +309,20 @@ function main(argv: string[]): void {
     }
     const abs = path.resolve(target);
     fs.mkdirSync(path.dirname(abs), { recursive: true });
-    fs.writeFileSync(abs, template.replace('__DATA__', JSON.stringify(scenarioData())), 'utf8');
+    // The same wrapper `panel.ts` puts around the template. Without the
+    // doctype the demo renders in quirks mode and the plot lays out to
+    // different rules than the panel it is supposed to be showing.
+    const page = [
+      '<!DOCTYPE html>',
+      '<html lang="en">',
+      '<head>',
+      '<meta charset="UTF-8">',
+      '<meta name="viewport" content="width=device-width, initial-scale=1.0">',
+      '</head>',
+      template.replace('__DATA__', JSON.stringify(scenarioData())),
+      '</html>',
+    ].join('\n');
+    fs.writeFileSync(abs, page, 'utf8');
     process.stdout.write(`wrote ${abs}\n`);
     return;
   }

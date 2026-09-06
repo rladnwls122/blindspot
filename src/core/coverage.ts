@@ -113,8 +113,40 @@ export interface PageData {
    * number you cannot argue with.
    */
   settings: PageSettings;
+  /** What the panel's own controls show, and are allowed to change. */
+  panel: PanelSettings;
   files: Array<{ path: string; lines: PageLine[] }>;
 }
+
+/**
+ * The settings the panel may change, and their current values. Kept apart from
+ * the measurement config because these live in VS Code's settings rather than
+ * in `.blindspot/config.json`, and because this list is the allowlist: the
+ * panel is a webview, and a message from it naming any other key is ignored.
+ */
+export interface PanelSettings {
+  mode: 'auto' | 'diff' | 'reading';
+  reviewThresholdPoints: number;
+  decorateUnreviewed: boolean;
+  showStatusBar: boolean;
+  explainOnHover: boolean;
+}
+
+export const PANEL_SETTING_KEYS = [
+  'mode',
+  'reviewThresholdPoints',
+  'decorateUnreviewed',
+  'showStatusBar',
+  'explainOnHover',
+] as const;
+
+export const DEFAULT_PANEL_SETTINGS: PanelSettings = {
+  mode: 'auto',
+  reviewThresholdPoints: 3,
+  decorateUnreviewed: true,
+  showStatusBar: true,
+  explainOnHover: true,
+};
 
 export interface PageSettings {
   visibleMsForPoint: number;
@@ -138,7 +170,12 @@ export interface PageSettings {
  * page. The page re-judges every line in the browser as its threshold moves,
  * from the same signals `buildReport` judged it by.
  */
-export function pageData(diffs: FileDiff[], sources: ReportSources, cfg: BlindspotConfig): PageData {
+export function pageData(
+  diffs: FileDiff[],
+  sources: ReportSources,
+  cfg: BlindspotConfig,
+  panel: PanelSettings = DEFAULT_PANEL_SETTINGS,
+): PageData {
   const files = targetFiles(diffs, cfg).map((diff) => ({
     path: diff.file,
     lines: evaluateLines(diff, sources, cfg).map(({ line, text, verdict, ev, signals }) => ({
@@ -178,6 +215,7 @@ export function pageData(diffs: FileDiff[], sources: ReportSources, cfg: Blindsp
       peripheralFloor: cfg.peripheralFloor,
       contentScaling: cfg.contentScaling,
     },
+    panel,
     files,
   };
 }
