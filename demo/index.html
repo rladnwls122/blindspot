@@ -394,16 +394,17 @@ footer {
 <div class="page">
 
 <header>
-  <div class="eyebrow">VS Code extension · v0.1</div>
+  <div class="eyebrow">VS Code extension</div>
   <h1>Blindspot</h1>
   <p class="blame">
     <s>git blame</s> tells you <b>who wrote it</b>.<br>
     Blindspot tells you <b>who read it</b>.
   </p>
   <p class="lede">
-    코드가 사람이 읽는 속도보다 빨리 만들어지는 시대에, 아무도 측정하지 않는 지표가 하나 있다.
-    테스트가 얼마나 코드를 지나갔는지는 재면서, <em>사람의 눈이 얼마나 지나갔는지는 아무도 안 잰다.</em>
-    Blindspot은 커밋 직전에 그 숫자를 보여준다.
+    Code is now produced faster than anyone can read it, and the one thing nobody
+    measures is how much of it a person actually looked at. We measure how much of
+    the code the <em>tests</em> touched and none of how much a <em>person</em> did.
+    This is that number, taken from the session you just had, before you commit.
   </p>
 </header>
 
@@ -437,16 +438,17 @@ footer {
     </div>
 
     <div class="col">
-      <h2>이 카드의 숫자는 하나의 정의에서 나온다</h2>
+      <h2>Every number here comes from one definition</h2>
       <p class="note">
-        여기 보이는 모든 값은 실제 스코어링 모델이 실제 세션 데이터(<span id="f-scope">182줄, 5개 파일</span>)를
-        계산한 결과다. 하드코딩된 숫자는 하나도 없다. 아래 슬라이더로 <b>"읽었다"의
-        기준</b>을 바꾸면 카드 전체가 다시 계산된다.
+        Nothing on this page is hardcoded. Every value is the scoring model run over
+        the evidence of this session (<span id="f-scope">182 lines, 5 files</span>).
+        Move the slider below to change what counts as <b>read</b>, and the whole
+        report recomputes from the same per-line signals.
       </p>
       <div class="panel control">
         <label for="thr">
           <span class="eyebrow">reviewed at</span>
-          <span class="val" id="thr-val">3 points — 화면에 보임 + 멈춤 + 커서 이동</span>
+          <span class="val" id="thr-val">3 points — on screen + paused + caret moved</span>
         </label>
         <input type="range" id="thr" min="1" max="6" step="1" value="3"
                aria-describedby="thr-verdict">
@@ -461,11 +463,12 @@ footer {
 <section>
   <div class="col">
     <div class="eyebrow">the research question</div>
-    <h2>"읽었다"를 어떻게 정의할 것인가</h2>
+    <h2>What counts as "read"</h2>
     <p class="note">
-      이게 이 프로젝트의 전부다. 나머지(패널, 위험도, git 훅)는 답을 눈에 보이게 만드는
-      장치일 뿐이고, 답이 틀리면 진행바 달린 거짓말이 된다. 모델은 논쟁할 수 있을 만큼
-      작게 유지했다 — 관측 가능한 신호 다섯 개, 가중치, 임계값 하나.
+      This is the whole question. Everything else — the panel, the risk ranking, the
+      git hook — only makes the answer visible, and if the answer is wrong they are a
+      lie with a progress bar on it. So the model is kept small enough to argue with:
+      a handful of observable signals, weights, and one threshold.
     </p>
   </div>
 
@@ -476,27 +479,29 @@ footer {
           <tr><th>signal</th><th>observed</th><th>pts</th></tr>
         </thead>
         <tbody>
-          <tr><td>visible</td><td class="desc">화면에 300ms 이상 떠 있었다</td><td>+1</td></tr>
-          <tr><td>focused</td><td class="desc">활성 에디터에서, 창이 포커스된 채로 800ms 이상</td><td>+1</td></tr>
-          <tr><td>dwell</td><td class="desc">뷰포트가 1초 이상 멈춰 있었다</td><td>+1</td></tr>
-          <tr><td>caret</td><td class="desc">커서를 올렸거나 선택했다</td><td>+1</td></tr>
-          <tr><td>edited</td><td class="desc">사람이 직접 타이핑했다</td><td>+2</td></tr>
+          <tr><td>visible</td><td class="desc">on screen for 300 ms or more</td><td>+1</td></tr>
+          <tr><td>focused</td><td class="desc">in the active editor, window focused, 800 ms or more</td><td>+1</td></tr>
+          <tr><td>dwell</td><td class="desc">the viewport held still for a second or more</td><td>+1</td></tr>
+          <tr><td>caret</td><td class="desc">you put the cursor on it, or selected it</td><td>+1</td></tr>
+          <tr><td>edited</td><td class="desc">you typed it yourself</td><td>+2</td></tr>
         </tbody>
       </table>
     </div>
 
     <div class="col">
       <p class="note">
-        기본 임계값 3점은 임의로 고른 값이 아니다. 아래 세 명제가 <em>동시에 참이 되는
-        가장 작은 값</em>이고, 이 셋은 테스트로 박아뒀다 — 나중에 모델을 바꿔서 하나라도
-        깨지면 그건 튜닝이 아니라 다른 제품이다.
+        The default of 3 points is not an arbitrary pick. It is the smallest value at
+        which the three propositions below are <em>all</em> true at once, and those
+        three are pinned as tests — if a later change to the model breaks one of them,
+        that is not tuning, it is a different product.
       </p>
       <div class="ineq" id="ineq"></div>
       <p class="note">
-        가중치보다 중요한 건 <b>세지 않는 것들</b>이다. 창이 포커스를 잃으면 아무것도
-        쌓이지 않고(배경 탭에 하루 띄워놔도 1점), 사람이 읽을 수 없는 속도(45줄/초)로
-        스크롤하면 가시성 점수가 0이며, 2초보다 긴 틱은 통째로 버린다 — 노트북을 덮어놓고
-        몇 시간을 "정독"으로 기록하는 걸 막는 유일한 방법이다.
+        What is <b>not</b> counted matters more than the weights. Nothing accrues while
+        the window is unfocused, so a file left in a background tab all day earns one
+        point; scrolling faster than a human reads (45 lines/sec) earns no visibility at
+        all; and any tick longer than two seconds is thrown away whole — the only thing
+        that stops a closed laptop from recording hours of careful reading.
       </p>
     </div>
   </div>
@@ -506,12 +511,12 @@ footer {
 <section>
   <div class="col">
     <div class="eyebrow">what it looks like</div>
-    <h2>diff 위에 그려진 어텐션</h2>
+    <h2>Attention drawn over the diff</h2>
     <p class="note">
-      에이전트가 refresh token 회전 로직을 짰다. 개발자는 위쪽 import와 인터페이스를 읽고,
-      나머지는 "괜찮아 보여서" 스크롤로 넘겼다. 아래는 그 결과다 —
-      <b class="mono" style="color:var(--ember)">주황색이 아무도 읽지 않은 줄</b>.
-      임계값을 바꾸면 여기도 같이 바뀐다.
+      Every changed line, coloured by what the evidence says about it —
+      <b class="mono" style="color:var(--ember)">orange is what nobody read</b>.
+      Moving the threshold moves this too, because it is the same judgement, not a
+      separate one made for the picture.
     </p>
   </div>
 
@@ -530,13 +535,14 @@ footer {
 <section>
   <div class="col">
     <div class="eyebrow">why a percentage alone is useless</div>
-    <h2>36%가 어디의 36%인가</h2>
+    <h2>Not every unread line is the same event</h2>
     <p class="note">
-      README 40줄을 안 읽은 것과 <code>auth/session.ts</code> 3줄을 안 읽은 것은 같은
-      사건이 아니다. 그래서 모든 줄은 경로(<code>auth/</code>, <code>billing/</code>,
-      <code>migrations/</code>)와 내용(<code>eval(</code>, <code>process.env</code>,
-      문자열로 조립한 SQL)으로 위험도가 매겨지고, 리포트는 <b>양이 아니라 위험도 순</b>으로
-      정렬된다.
+      Forty unread lines of README and three unread lines of
+      <code>auth/session.ts</code> are not the same thing to have missed. So every line
+      is ranked by its path (<code>auth/</code>, <code>billing/</code>,
+      <code>migrations/</code>) and by its content (<code>eval(</code>,
+      <code>process.env</code>, SQL built by string concatenation), and the report is
+      sorted <b>by risk, not by volume</b>.
     </p>
   </div>
 
@@ -560,17 +566,17 @@ footer {
   <div class="col" style="margin-top:14px">
     <div class="eyebrow">the case that broke it</div>
     <p class="note">
-      처음 구현은 <code>안 읽은 줄 수 × 위험도</code>로 곱해서 정렬했다. 그럴듯해 보이지만
-      틀렸고, <b>테스트가 그걸 잡았다</b>. 아래 두 파일만 있는 diff에서 두 정렬을
-      비교해보면 왜인지 보인다 — 이건 지금도
-      <code>test/coverage.test.ts</code>에 회귀 테스트로 남아 있다.
+      The first implementation sorted by <code>unread lines × risk</code>. It looks
+      reasonable, it is wrong, and <b>a test caught it</b>. Compare the two orderings
+      on the two-file diff below and the reason is visible — it is still a regression
+      test in <code>test/coverage.test.ts</code>.
     </p>
   </div>
 
   <div class="rank">
-    <div class="toggle" role="group" aria-label="정렬 기준">
-      <button id="sort-risk" aria-pressed="true">위험도 우선 (현재 구현)</button>
-      <button id="sort-vol" aria-pressed="false">안 읽은 줄 수 × 위험도 (원래 구현)</button>
+    <div class="toggle" role="group" aria-label="sort order">
+      <button id="sort-risk" aria-pressed="true">risk first (what it does)</button>
+      <button id="sort-vol" aria-pressed="false">unread × risk (what it did)</button>
     </div>
     <div class="panel" style="padding:18px 22px">
       <div class="table-wrap">
@@ -599,18 +605,18 @@ footer {
       <div class="eyebrow">the composite</div>
       <h2>Review Score</h2>
       <p class="note">
-        커버리지는 <em>무엇에 대한 커버리지였는지</em>에 따라 가중된다. 위 시나리오에서
-        전체 커버리지는 64%지만 critical 코드 커버리지는 24%다 — 점수가 64가 아니라
-        49인 이유가 그것이다.
+        Coverage is weighted by <em>what it was coverage of</em>. A diff can be well
+        read overall and barely read where being wrong costs the most, and the score
+        says so instead of averaging the difference away.
       </p>
       <p class="note">
-        측정할 대상이 없는 항목은 0점 처리하지 않고 <b>빼버린 뒤 가중치를 나머지에
-        재분배</b>한다. critical 코드를 건드리지 않은 diff가 "critical 0%"로 벌점을 받는 건
-        말이 안 되니까.
+        A component with nothing to measure is not scored zero — it is dropped, and its
+        weight is redistributed over the rest. A diff that never touched critical code
+        should not be penalised for "critical 0%".
       </p>
       <p class="note" style="color:var(--faint)">
-        이 시나리오는 전부 새로 추가된 줄이라 New code가 Coverage와 같은 값이 된다.
-        기존 줄을 수정한 diff에서는 갈린다.
+        In a diff of nothing but added lines, New code and Coverage come out the same.
+        They diverge once existing lines are modified.
       </p>
     </div>
     <div class="panel" style="padding:22px 24px">
@@ -623,99 +629,20 @@ footer {
   </div>
 </section>
 
-<!-- ========================================================== the questions -->
-<section>
-  <div class="col">
-    <div class="eyebrow">open questions</div>
-    <h2>결정이 필요한 것들</h2>
-    <p class="note">
-      되돌리기 비싼 것 위주로. 각 항목의 기본값은 이미 코드에 들어가 있으니,
-      그냥 두면 그 선택으로 굴러간다. 전체는 저장소의
-      <code>docs/QUESTIONS.md</code>에 있다.
-    </p>
-  </div>
-  <div class="qa">
-    <div class="q act">
-      <span class="k">Q1 · 액션 필요</span>
-      <h3>레포를 독립시킬 것인가</h3>
-      <p>
-        새 저장소를 만들려 했지만 이 세션의 GitHub 앱 권한으로 레포 생성이 막혀 있었다
-        (403). 그래서 지금은 프로필 저장소의 브랜치 안에 <code>blindspot/</code>
-        디렉터리로 들어가 있다.
-      </p>
-      <p class="default">GitHub에서 빈 레포 하나 만들고 → scripts/extract-repo.sh 실행 (히스토리 유지, 30초)</p>
-    </div>
-    <div class="q">
-      <span class="k">Q2 · 캘리브레이션</span>
-      <h3>임계값 3점이 맞나</h3>
-      <p>
-        <code>visible + focused</code>만으로 2점이라, dwell 1초만 붙으면 커서를 옮기지
-        않아도 3점이 된다. 화면에 띄워놓고 1초 멈춘 것을 "읽었다"로 볼 것인가.
-        위 슬라이더를 4로 올려보면 얼마나 빡빡해지는지 보인다.
-      </p>
-      <p class="default">기본값 3 · 하루 써보고 "안 읽었는데 읽었다고 나온" 케이스가 있는지가 유일한 판단 기준</p>
-    </div>
-    <div class="q">
-      <span class="k">Q3 · 범위</span>
-      <h3>삭제된 줄도 리뷰 대상인가</h3>
-      <p>
-        지금은 아니다 — 없는 줄을 못 읽을 수는 없으니까. 하지만 에이전트가 조용히 지운
-        null 체크야말로 버그가 숨는 곳이다. 제대로 하려면 diff 뷰 안에서의 어텐션 추적이
-        필요하다.
-      </p>
-      <p class="default">추천: 리포트에는 노출하되 점수에는 미반영</p>
-    </div>
-    <div class="q">
-      <span class="k">Q4 · 제품 방향</span>
-      <h3>커밋을 막을 것인가</h3>
-      <p>
-        기본값은 경고만 하고 통과(exit 0)다. 커밋을 막는 리뷰 도구는 일주일 안에
-        <code>--no-verify</code>로 우회되거나 삭제된다. 하지만 팀 도구로 갈 거면 CI에서
-        강제하는 게 자연스럽고, 그러면 "개인 학습 도구"가 아니라 "규정 준수 도구"가 된다.
-      </p>
-      <p class="default">기본은 경고 · 강제는 --min-coverage로 옵트인</p>
-    </div>
-    <div class="q">
-      <span class="k">Q5 · 정직성</span>
-      <h3>무엇을 "AI가 쓴 코드"라 부를 것인가</h3>
-      <p>
-        정직하게 말하면 LLM이 썼는지 우리는 알 수 없다. 관측 가능한 건 <code>typed</code>
-        (한 글자씩), <code>bulk</code>(한 번에 8줄/280자 이상 — 에이전트든 붙여넣기든
-        구분 불가), <code>declared-ai</code>(도구가 명시적으로 선언)뿐이다. 그래서 코드
-        안에서는 <code>machine-written</code>이라 부른다.
-      </p>
-      <p class="default">UI에는 "AI-generated"로 표기 중 · 과장이라고 보면 bulk를 버킷에서 빼면 됨 (한 줄)</p>
-    </div>
-    <div class="q">
-      <span class="k">Q6 · 확장 범위</span>
-      <h3>저자인가 리뷰어인가</h3>
-      <p>
-        지금은 저자의 blindspot을 잰다. 하지만 "LGTM을 3초 만에 누른 리뷰어가 실제로 본
-        줄은 12%"가 훨씬 강한 메시지다. 문제는 그게 GitHub 웹에서 일어난다는 것 —
-        브라우저 확장이 필요하고, 그건 다른 프로젝트다.
-      </p>
-      <p class="default">v0.4의 갈림길 · VS Code 안에 머무를지 브라우저까지 갈지</p>
-    </div>
-  </div>
-</section>
-
 <footer>
-  <p class="eyebrow">where it is</p>
+  <p class="eyebrow">where the numbers come from</p>
   <p class="note">
-    브랜치 <code>claude/blindspot-vscode-extension-hu8qlo</code> ·
-    디렉터리 <code>blindspot/</code> · 커밋 + 푸시 완료.
-    코어 로직은 <code>src/core/</code>에 있고 에디터에 의존하지 않는다 —
-    "읽었다"의 정의는 에디터 없이도 다시 튜닝하고 재생할 수 있어야 검증이 가능하니까.
+    The scoring model lives in <code>src/core/</code> and does not depend on the
+    editor: the definition of "read" has to be re-tunable and replayable without VS
+    Code, or there is no way to check it. Nothing is uploaded and nothing leaves the
+    machine — the evidence stays in the git directory of the repository it is about.
   </p>
   <div class="shell">
-<span class="c"># 96 unit tests + 18 end-to-end tests against a real git repo</span>
+<span class="c"># the model, the CLI, a real git repository, the extension</span>
 npm test
 
-<span class="c"># replay the scripted session through the real model</span>
+<span class="c"># replay a scripted session through the real model</span>
 npm run demo
-
-<span class="c"># run it on your own working tree, right now</span>
-node bin/blindspot.js report
   </div>
 </footer>
 
@@ -731,21 +658,21 @@ const RISK_RANK = { critical: 4, high: 3, medium: 2, low: 1 };
 const SCORE_W = { coverage: 0.4, critical: 0.3, newCode: 0.15, ai: 0.15 };
 
 const THRESHOLD_LABEL = {
-  1: '1 point — 화면에 스쳐 지나가기만 해도 읽은 것',
-  2: '2 points — 화면에 보이고, 포커스된 에디터 안이면 읽은 것',
-  3: '3 points — 화면에 보임 + 멈춤 + 커서 이동 (기본값)',
-  4: '4 points — 멈춰서 읽고, 커서까지 옮겨야 읽은 것',
-  5: '5 points — 사실상 직접 타이핑한 줄만',
-  6: '6 points — 모든 신호가 다 있어야 함',
+  1: '1 point — a line that merely crossed the screen counts as read',
+  2: '2 points — on screen, in the focused editor, counts as read',
+  3: '3 points — on screen + paused + caret moved (default)',
+  4: '4 points — you stopped to read it and moved the caret to it',
+  5: '5 points — effectively only the lines you typed yourself',
+  6: '6 points — every signal has to be there',
 };
 
 const THRESHOLD_NOTE = {
-  1: '스크롤로 훑고 지나간 줄까지 "읽었다"로 세는 정의. 커버리지는 올라가지만 그 숫자는 아무것도 뜻하지 않는다.',
-  2: '뷰포트가 한 번도 멈추지 않아도 통과한다. 브리프의 첫 번째 부등식(스크롤 ≠ 리뷰)이 깨지는 지점.',
-  3: '세 부등식이 모두 성립하는 가장 느슨한 정의. 기본값.',
-  4: '커서를 옮기거나 직접 고친 줄만 인정. 눈으로만 정독한 코드가 blindspot으로 잡히기 시작한다.',
-  5: '자기가 타이핑한 줄만 읽은 것으로 친다. 에이전트가 쓴 코드는 전부 blindspot이 된다.',
-  6: '도달 불가능에 가깝다. 모든 것이 blindspot.',
+  1: 'Counts a line you scrolled past as read. Coverage goes up and the number means nothing.',
+  2: 'Passes without the viewport ever stopping. This is where the first proposition — scrolling is not reviewing — breaks.',
+  3: 'The loosest definition under which all three propositions hold. The default.',
+  4: 'Only lines you moved the caret to or edited. Code read by eye alone starts showing up as blindspot.',
+  5: 'Only the lines you typed. Everything an agent wrote becomes blindspot.',
+  6: 'Close to unreachable. Everything is a blindspot.',
 };
 
 function pointsOf(sig) {
@@ -881,7 +808,7 @@ function renderCard() {
   $('f-total').textContent = state.total;
   $('f-read').textContent = state.reviewed;
   $('f-unseen').textContent = state.unseen;
-  $('f-scope').textContent = state.total + '줄, ' + state.files.length + '개 파일';
+  $('f-scope').textContent = state.total + ' lines, ' + state.files.length + ' files';
 
   const ranked = sortFiles(state.files);
   const worst = ranked.find(f => f.unseen > 0 && (f.blindspotRisk === 'critical' || f.blindspotRisk === 'high'));
@@ -907,10 +834,10 @@ function renderThreshold() {
 
 function renderIneq() {
   const cases = [
-    { what: '줄 위를 스크롤로 지나감', sig: { visible: true } },
-    { what: '0.2초 동안 화면에 노출', sig: {} },
-    { what: '보임 + 뷰포트 멈춤 + 커서 이동', sig: { visible: true, focused: true, dwell: true, caret: true } },
-    { what: '직접 타이핑함', sig: { visible: true, focused: true, caret: true, edited: true } },
+    { what: 'scrolled past the line', sig: { visible: true } },
+    { what: 'on screen for 0.2 s', sig: {} },
+    { what: 'visible + viewport paused + caret moved', sig: { visible: true, focused: true, dwell: true, caret: true } },
+    { what: 'typed by hand', sig: { visible: true, focused: true, caret: true, edited: true } },
   ];
   $('ineq').innerHTML = cases.map(c => {
     const p = pointsOf({ visible: !!c.sig.visible, focused: !!c.sig.focused,
@@ -980,10 +907,12 @@ function renderRegression() {
   }).join('');
 
   $('rank-note').innerHTML = sortMode === 'volume'
-    ? '곱셈으로 정렬하면 <b>README가 1위</b>가 된다. 40 × 1 = 40이 3 × 4 = 12를 이기니까. ' +
-      '커밋 직전에 가장 먼저 보게 되는 것이 문서 오타가 되고, 안 읽은 인증 코드는 그 아래로 밀린다.'
-    : '위험도를 먼저 보면 <b>auth가 1위</b>다. 양은 같은 위험도 안에서만 순서를 정한다. ' +
-      '이 도구가 존재하는 이유가 바로 이 판단이라서, 양이 위험도를 이기는 일은 없어야 한다.';
+    ? 'Multiplying puts <b>README first</b>: 40 × 1 = 40 beats 3 × 4 = 12. The first ' +
+      'thing you see before committing is a documentation typo, and the unread ' +
+      'authentication code is below it.'
+    : 'Risk first puts <b>auth first</b>. Volume only orders files inside the same ' +
+      'risk. That judgement is the reason this tool exists, so volume must never ' +
+      'beat risk.'
 }
 
 function renderFiles() {

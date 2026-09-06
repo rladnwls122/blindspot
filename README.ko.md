@@ -12,27 +12,11 @@ diff의 각 줄에 당신의 시선이 실제로 머물렀는지를 IDE 이벤�
 
 *[English README](README.md)* — 정본은 영문 README입니다.
 
-```
-┌─────────────────────────────────┐
-│     BLINDSPOT                   │
-│                                 │
-│ Review coverage     64%         │
-│ Blindspot           36% ⚠       │
-│                                 │
-│  182 changed lines              │
-│  116 reviewed                   │
-│   66 unseen                     │
-│                                 │
-│ ⚠ CRITICAL                      │
-│ src/auth/session.ts             │
-│ lines 9-34 unread               │
-│                                 │
-│ [ Review Blindspot ]            │
-└─────────────────────────────────┘
-```
+![Blindspot 리포트 패널 — 리뷰 커버리지, blindspot 비율, 가장 위험한 안 읽은 구간, 그리고 "읽었다"의 기준을 바꾸는 슬라이더](media/report.png)
 
-이 카드는 목업이 아닙니다. `npm run demo`를 실행하면 실제 스코어링 모델이
-스크립트로 기록된 편집 세션을 재생하면서 저 숫자들을 계산해 냅니다.
+목업이 아니다. 이 화면의 모든 숫자는 실제 스코어링 모델이 실제 세션을 계산한 결과다 —
+`npm run demo`가 저 화면을 만든 스크립트 세션을 재생하고, 에디터 안에서는 같은 페이지에
+당신의 세션이 들어간다.
 
 ## 왜 만들었나
 

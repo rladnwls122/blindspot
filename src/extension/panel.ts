@@ -112,7 +112,7 @@ export class ReportPanel {
       .replace('<script>', `<script nonce="${nonce}">`)
       .replace('__DATA__', () => json);
     return `<!DOCTYPE html>
-<html lang="ko">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy" content="${csp}">

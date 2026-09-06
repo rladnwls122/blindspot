@@ -95,10 +95,21 @@
 
 ### Changed
 
+- **The report panel is a product, not a design brief.** `media/page.html` — the
+  page the panel actually shows — was the project's own working document: its
+  prose was Korean, it carried a section of six open design questions (one of
+  them describing a 403 from a GitHub app), and it ended in a footer naming the
+  working branch it had been written on. All of that shipped in the `.vsix` and
+  was what the panel put on screen. The page is now the report and only the
+  report — the card, the threshold slider, the signals, the diff, the risk
+  ranking and the Review Score — in English, and its copy no longer describes
+  the demo scenario as though it were your session.
 - English is the primary `README.md`, and so the page anyone reads on the
   extension listing; the Korean text moves to `README.ko.md` and stays out of
   the `.vsix`. The two link to each other, and the English one is the canonical
-  version when they disagree.
+  version when they disagree. Install comes before the essay, the ASCII mockup
+  is replaced by a render of the real panel, and the development commands moved
+  out of Install into their own section.
 
 ### Fixed
 

@@ -324,6 +324,7 @@
     "icon": "node scripts/make-icon.mjs",
     "package": "npm run build && vsce package --no-dependencies",
     "publish": "npm run build && vsce publish --no-dependencies",
+    "publish:ovsx": "npm run build && npx ovsx publish --no-dependencies",
     "demo:page": "npm run build && node out/demo/simulate.js --page demo/index.html"
   },
   "devDependencies": {

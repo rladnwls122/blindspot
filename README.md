@@ -12,27 +12,57 @@ right before you commit, how much of it you never read.
 
 *[한국어 README](README.ko.md)*
 
-```
-┌─────────────────────────────────┐
-│     BLINDSPOT                   │
-│                                 │
-│ Review coverage     64%         │
-│ Blindspot           36% ⚠       │
-│                                 │
-│  182 changed lines              │
-│  116 reviewed                   │
-│   66 unseen                     │
-│                                 │
-│ ⚠ CRITICAL                      │
-│ src/auth/session.ts             │
-│ lines 9-34 unread               │
-│                                 │
-│ [ Review Blindspot ]            │
-└─────────────────────────────────┘
+![The Blindspot report panel: review coverage, the blindspot percentage, the worst unread hunk, and the slider that redefines what counts as read](media/report.png)
+
+That is not a mockup. Every number on it is the real scoring model run over a
+real session — `npm run demo` replays the scripted one that produced it, and in
+the editor the same page is fed your own.
+
+## Install
+
+From [Open VSX](https://open-vsx.org/extension/rladnwls122/blindspot) — which is
+where VSCodium, Cursor, Windsurf and Gitpod get their extensions. In VS Code
+itself, build a `.vsix` and install that:
+
+```bash
+npm install
+npm run package                              # produces blindspot-0.3.2.vsix
+code --install-extension blindspot-0.3.2.vsix
 ```
 
-That card is not a mockup. Run `npm run demo` and the numbers come out of the
-real scoring model replaying a scripted editing session.
+Open a git repository and coverage appears in the status bar, and in the
+Blindspot view in the Activity Bar. Outside one the commands still register and
+tell you what is missing. Every folder of a multi-root workspace is tracked
+separately; the status bar and the sidebar follow the one you are reading in.
+
+### Commands
+
+| command | what it does |
+| --- | --- |
+| `Blindspot: Show Review Report` | the panel above |
+| `Blindspot: Switch Mode (Diff / Reading)` | what to measure |
+| `Blindspot: Choose What the Diff Is Measured Against` | last review / `baseRef` / any ref |
+| `Blindspot: Review Blindspot` | jump to the next unread hunk, worst risk first |
+| `Blindspot: Mark File As Reviewed` | "I read this in the GitHub UI" (also from the sidebar) |
+| `Blindspot: Complete Review` | baseline to HEAD — reviewed up to here |
+| `Blindspot: Install pre-commit Hook` | print the card at commit time |
+| `Blindspot: Toggle Unread Line Markers` | gutter markers |
+| `Blindspot: Reset Review Evidence` | start over |
+
+### CLI
+
+```bash
+blindspot check --staged            # print the card for what you are about to commit
+blindspot report                    # per-file table plus Read / Focus / Activity / Pace
+blindspot read                      # what Reading mode sees: opened files, whole. No git needed
+blindspot check --min-coverage 70   # exit 1 below 70% (for CI or a strict hook)
+blindspot check --json              # machine-readable
+blindspot --version                 # the version
+```
+
+The installed pre-commit hook **warns and exits 0** by default. A review tool
+that blocks commits gets uninstalled within a week; one that tells you something
+true gets kept. Enforcement is opt-in via `--min-coverage` / `--max-critical`.
 
 ## Why
 
@@ -260,71 +290,6 @@ Provenance records what was actually observed, never a guess about a model:
 - `declared-ai` — a tool explicitly claimed it via `.blindspot/ai-regions.json`
 - `unknown` — predates tracking
 
-## Install
-
-From [Open VSX](https://open-vsx.org/extension/rladnwls122/blindspot) — which is
-where VSCodium, Cursor, Windsurf and Gitpod get their extensions. In VS Code
-itself, build a `.vsix` and install that:
-
-```bash
-npm install
-npm run package                              # produces blindspot-0.3.2.vsix
-code --install-extension blindspot-0.3.2.vsix
-```
-
-Open a git repository and coverage appears in the status bar, and in the
-Blindspot view in the Activity Bar. Outside one the commands still register and
-tell you what is missing. Every folder of a multi-root workspace is tracked
-separately; the status bar and the sidebar follow the one you are reading in.
-
-To work on it:
-
-```bash
-npm install
-npm run build
-npm test           # 229 tests: the model, the CLI, a real git repo, the extension
-npm run demo       # replay a scripted session through the real model
-npm run demo:page  # regenerate demo/index.html — the interactive version
-npm run icon       # regenerate media/icon.png
-```
-
-To debug the extension: open this folder in VS Code and press <kbd>F5</kbd>.
-
-[`demo/index.html`](demo/index.html) is the same report with the threshold made
-adjustable: move the slider and every number on the page — coverage, the file
-ranking, the Review Score — recomputes from the same per-line signals the
-extension records. It is generated from `media/page.html`, so the
-numbers in it can never drift from the model.
-
-### Commands
-
-| command | what it does |
-| --- | --- |
-| `Blindspot: Show Review Report` | the panel above |
-| `Blindspot: Switch Mode (Diff / Reading)` | what to measure |
-| `Blindspot: Choose What the Diff Is Measured Against` | last review / `baseRef` / any ref |
-| `Blindspot: Review Blindspot` | jump to the next unread hunk, worst risk first |
-| `Blindspot: Mark File As Reviewed` | "I read this in the GitHub UI" (also from the sidebar) |
-| `Blindspot: Complete Review` | baseline to HEAD — reviewed up to here |
-| `Blindspot: Install pre-commit Hook` | print the card at commit time |
-| `Blindspot: Toggle Unread Line Markers` | gutter markers |
-| `Blindspot: Reset Review Evidence` | start over |
-
-### CLI
-
-```bash
-blindspot check --staged            # print the card for what you are about to commit
-blindspot report                    # per-file table plus Read / Focus / Activity / Pace
-blindspot read                      # what Reading mode sees: opened files, whole. No git needed
-blindspot check --min-coverage 70   # exit 1 below 70% (for CI or a strict hook)
-blindspot check --json              # machine-readable
-blindspot --version                 # the version
-```
-
-The installed pre-commit hook **warns and exits 0** by default. A review tool
-that blocks commits gets uninstalled within a week; one that tells you something
-true gets kept. Enforcement is opt-in via `--min-coverage` / `--max-critical`.
-
 ## Configuration
 
 Editor settings live under `blindspot.*`. `blindspot.mode` (`auto` / `diff` /
@@ -364,6 +329,27 @@ and in both cases, nothing does.
 Evidence is stored against a hash of each line's content, not its line number,
 so inserting an import above a line you read does not hand that credit to a line
 you didn't. Reindenting a line keeps its evidence; changing a token does not.
+
+## Development
+
+To work on it:
+
+```bash
+npm install
+npm run build
+npm test           # 229 tests: the model, the CLI, a real git repo, the extension
+npm run demo       # replay a scripted session through the real model
+npm run demo:page  # regenerate demo/index.html — the interactive version
+npm run icon       # regenerate media/icon.png
+```
+
+To debug the extension: open this folder in VS Code and press <kbd>F5</kbd>.
+
+[`demo/index.html`](demo/index.html) is the same report with the threshold made
+adjustable: move the slider and every number on the page — coverage, the file
+ranking, the Review Score — recomputes from the same per-line signals the
+extension records. It is generated from `media/page.html`, so the
+numbers in it can never drift from the model.
 
 ## Architecture
 
