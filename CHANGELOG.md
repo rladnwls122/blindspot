@@ -91,6 +91,31 @@
   sidebar and the markers as if it were live. Both now clear, and the sidebar
   says tracking is off.
 
+## [0.3.3] — 2026-09-06
+
+### Changed
+
+- **The report panel answers one question and stops.** It opens with the answer
+  as a sentence — *81 lines you did not read* — then shows where the unread
+  lines fall across the whole change, then the files worst first, then the code,
+  then the definition behind a disclosure. Gone: the Review Score, which was a
+  weighted composite nobody can act on and which the project's own standing
+  refusal against gamification rules out; the coverage percentage, which is a
+  hundred minus the blindspot; the reviewed count, which is the change minus the
+  unread; the four propositions, a truth table identical every session; the file
+  tabs, a second copy of the list of files; and the legend, which said what the
+  colours already say.
+- **The change gets a shape.** Every target line is one bar, files side by side
+  and as wide as they are long, unread marked. A percentage cannot tell you
+  whether what you missed is scattered through the diff or is one block you
+  skipped; this can, without being read.
+- **The panel is dressed in the editor's clothes.** Colours come from VS Code's
+  own theme variables, so a light theme gets a light panel, and the type is the
+  editor's UI and editor fonts rather than three faces fetched from Google. The
+  content security policy loses its font and style origins with them: the page
+  now reaches for nothing at all. The one saturated colour left is the unread
+  mark, and it is the orange of the gutter bar the extension already draws.
+
 ## [0.3.2] — 2026-09-06
 
 ### Changed

@@ -149,12 +149,15 @@ describe('the report panel', () => {
     assert.match(html, new RegExp(`<script nonce="${nonce}">`));
   });
 
-  test('the page may fetch its typefaces, and nothing else', () => {
+  test('the page fetches nothing at all', () => {
     ReportPanel.show(EXT, () => {}, view('src/app.ts'));
     const csp = html.match(/Content-Security-Policy" content="([^"]+)"/)?.[1] ?? '';
-    assert.match(csp, /style-src [^;]*https:\/\/fonts\.googleapis\.com/);
-    assert.match(csp, /font-src https:\/\/fonts\.gstatic\.com/);
-    assert.doesNotMatch(csp, /connect-src|img-src/);
+    // It draws in the editor's own colours and sets itself in the editor's own
+    // typefaces, so there is no origin it needs to be allowed to reach.
+    assert.match(csp, /default-src 'none'/);
+    assert.doesNotMatch(csp, /https?:/);
+    assert.doesNotMatch(csp, /connect-src|img-src|font-src/);
+    assert.doesNotMatch(html, /fonts\.(googleapis|gstatic)\.com/);
   });
 
   test('a later report is posted into the page, not reloaded over it', () => {

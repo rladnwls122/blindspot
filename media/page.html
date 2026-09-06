@@ -1,353 +1,258 @@
 <title>Blindspot</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
 <style>
+/*
+ * The report panel.
+ *
+ * It runs in two places from one file: inside VS Code as a webview, and in a
+ * browser as the demo. So every colour and both typefaces are the editor's own
+ * where the editor is there to ask, and a plain fallback where it is not. A
+ * panel that paints its own near-black over someone's light theme is a foreign
+ * object in their workspace, and a panel that needs a font off the network is
+ * one that looks wrong on a train.
+ *
+ * One saturated colour is allowed on the page, and it is the unread mark. It is
+ * the orange of the gutter bar the extension already draws, so what the panel
+ * says and what the editor shows are the same claim in the same colour.
+ */
 :root {
-  --ground: #f1f3f6;
-  --surface: #ffffff;
-  --sunk: #e9ecf1;
-  --ink: #13161c;
-  --muted: #5f6875;
-  --faint: #97a0ae;
-  --rule: #dce0e7;
-  --ember: #b45309;
-  --ember-soft: #b4530918;
-  --read: #0f766e;
-  --read-soft: #0f766e14;
-  --danger: #b42318;
-  --shadow: 0 1px 2px #13161c0a, 0 8px 24px #13161c0d;
-
-  --sans: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --serif: "Newsreader", ui-serif, Georgia, "Times New Roman", serif;
-  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --bg: var(--vscode-editor-background, #fbfbfa);
+  --fg: var(--vscode-editor-foreground, #1a1d21);
+  --muted: var(--vscode-descriptionForeground, #63696f);
+  --rule: var(--vscode-widget-border, #dfe1e4);
+  --sunk: var(--vscode-editorWidget-background, #f2f2f1);
+  --unread: #c2410c;
+  --unread-wash: #c2410c14;
+  --severe: var(--vscode-errorForeground, #b42318);
+  --link: var(--vscode-textLink-foreground, #0b5fb0);
+  --ui: var(--vscode-font-family, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif);
+  --code: var(--vscode-editor-font-family, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  --ui-size: var(--vscode-font-size, 14px);
 }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --ground: #0d1015;
-    --surface: #141922;
-    --sunk: #0f141b;
-    --ink: #e3e8ef;
-    --muted: #8b95a5;
-    --faint: #5d6675;
-    --rule: #212934;
-    --ember: #eb9a3e;
-    --ember-soft: #eb9a3e1f;
-    --read: #3cc6ab;
-    --read-soft: #3cc6ab18;
-    --danger: #f2776b;
-    --shadow: 0 1px 2px #00000040, 0 10px 30px #00000040;
+  :root {
+    --bg: var(--vscode-editor-background, #14171c);
+    --fg: var(--vscode-editor-foreground, #dfe3e8);
+    --muted: var(--vscode-descriptionForeground, #8b929c);
+    --rule: var(--vscode-widget-border, #272c33);
+    --sunk: var(--vscode-editorWidget-background, #1b1f25);
+    --unread: #f97316;
+    --unread-wash: #f9731620;
+    --severe: var(--vscode-errorForeground, #f2776b);
+    --link: var(--vscode-textLink-foreground, #6cb6ff);
   }
-}
-:root[data-theme="dark"] {
-  --ground: #0d1015;
-  --surface: #141922;
-  --sunk: #0f141b;
-  --ink: #e3e8ef;
-  --muted: #8b95a5;
-  --faint: #5d6675;
-  --rule: #212934;
-  --ember: #eb9a3e;
-  --ember-soft: #eb9a3e1f;
-  --read: #3cc6ab;
-  --read-soft: #3cc6ab18;
-  --danger: #f2776b;
-  --shadow: 0 1px 2px #00000040, 0 10px 30px #00000040;
 }
 
 * { box-sizing: border-box; }
 
 body {
-  background: var(--ground);
-  color: var(--ink);
-  font-family: var(--sans);
-  font-size: 16px;
-  line-height: 1.65;
-  -webkit-font-smoothing: antialiased;
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--ui);
+  font-size: var(--ui-size);
+  line-height: 1.6;
 }
 
 .page {
-  max-width: 1080px;
+  max-width: 62rem;
   margin: 0 auto;
-  padding: 0 24px 96px;
+  padding: 3.5rem 2rem 5rem;
   display: flex;
   flex-direction: column;
-  gap: 72px;
+  gap: 2.75rem;
 }
-.col {
-  max-width: 640px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-section { display: flex; flex-direction: column; gap: 22px; }
-/* Flex children default to min-width:auto, which lets a wide code block push
-   the whole page sideways instead of scrolling inside its own container. */
-section > *, .split > *, .col > * { min-width: 0; }
-.table-wrap { overflow-x: auto; }
 
-/* ---------------------------------------------------------------- type */
+/* ------------------------------------------------------------- the answer */
 
-h1 {
-  font-family: var(--serif);
-  font-weight: 500;
-  font-size: clamp(2.6rem, 7vw, 4.2rem);
-  line-height: 1.02;
-  letter-spacing: -0.022em;
+.answer h1 {
   margin: 0;
-  text-wrap: balance;
-}
-h2 {
-  font-family: var(--serif);
-  font-weight: 500;
-  font-size: clamp(1.5rem, 3.4vw, 2rem);
-  line-height: 1.16;
-  letter-spacing: -0.014em;
-  margin: 0;
-  text-wrap: balance;
-}
-h3 {
-  font-size: 0.95rem;
+  font-size: clamp(1.6rem, 1.1rem + 2vw, 2.5rem);
   font-weight: 600;
-  margin: 0;
-  letter-spacing: -0.006em;
+  letter-spacing: -0.018em;
+  line-height: 1.15;
+  max-width: 22ch;
 }
-p { margin: 0; }
-.note { font-size: 0.875rem; color: var(--muted); line-height: 1.6; }
-.eyebrow {
-  font-family: var(--mono);
-  font-size: 0.7rem;
+.answer h1 .n { color: var(--unread); font-variant-numeric: tabular-nums; }
+.answer.clear h1 .n { color: inherit; }
+.answer p {
+  margin: 0.7rem 0 0;
+  color: var(--muted);
+  max-width: 52ch;
+}
+.answer p b { color: var(--severe); font-weight: 600; }
+
+.act {
+  margin-top: 1.4rem;
+  font: inherit;
   font-weight: 500;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--faint);
+  color: var(--bg);
+  background: var(--fg);
+  border: 1px solid var(--fg);
+  border-radius: 3px;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
 }
-code, .mono { font-family: var(--mono); font-size: 0.88em; }
-code { background: var(--sunk); padding: 0.1em 0.35em; border-radius: 3px; }
-b, strong { font-weight: 600; }
-em { font-style: normal; color: var(--ember); }
-a { color: inherit; text-decoration-color: var(--faint); text-underline-offset: 3px; }
-a:hover { text-decoration-color: var(--ember); }
-:focus-visible { outline: 2px solid var(--ember); outline-offset: 3px; border-radius: 3px; }
+.act:hover { opacity: 0.86; }
+.act:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
 
-/* ---------------------------------------------------------------- header */
+/* ---------------------------------------------------------------- the map */
 
-header {
-  padding-top: clamp(56px, 12vh, 120px);
+/*
+ * Every target line of the whole change, one bar each, files side by side and
+ * as wide as they are long. A percentage cannot tell you whether the part you
+ * missed is scattered through the diff or is one block you skipped; this can,
+ * at a glance, which is the only thing this panel has to do quickly.
+ */
+.map { display: flex; flex-direction: column; gap: 0.5rem; }
+.map-strip { display: flex; gap: 3px; height: 4.5rem; }
+.map-file {
   display: flex;
-  flex-direction: column;
-  gap: 24px;
-  max-width: 720px;
+  gap: 0;
+  min-width: 4px;
+  background: var(--sunk);
+  border: 1px solid transparent;
+  border-radius: 2px;
+  overflow: hidden;
+  padding: 0;
+  cursor: pointer;
+}
+.map-file:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
+.map-file[aria-pressed="true"] { border-color: var(--fg); }
+.map-file i { flex: 1 1 0; min-width: 1px; }
+.map-file i.read { background: var(--muted); opacity: 0.3; }
+.map-file i.unread { background: var(--unread); }
+.map-file i.unread.severe { background: var(--severe); }
+.map-legend {
+  display: flex;
+  gap: 3px;
+  font-size: 0.75rem;
+  color: var(--muted);
+  font-family: var(--code);
+}
+.map-legend span {
+  min-width: 4px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
-/* ---------------------------------------------------------------- panels */
+/* -------------------------------------------------------------- the files */
 
-.panel {
-  background: var(--surface);
-  border: 1px solid var(--rule);
-  border-radius: 4px;
-  box-shadow: var(--shadow);
-  min-width: 0;
-}
-.split {
-  display: grid;
-  grid-template-columns: minmax(0, 300px) minmax(0, 1fr);
-  gap: 28px;
-  align-items: start;
-}
-@media (max-width: 800px) { .split { grid-template-columns: 1fr; } }
-
-/* the commit card */
-
-.card { padding: 22px 24px 20px; display: flex; flex-direction: column; gap: 18px; }
-.card-head {
-  display: flex; justify-content: space-between; align-items: baseline;
-  border-bottom: 1px solid var(--rule); padding-bottom: 12px;
-}
-.card-head .eyebrow { color: var(--muted); }
-.figures { display: flex; gap: 30px; }
-.figure { display: flex; flex-direction: column; gap: 1px; }
-.figure b {
-  font-family: var(--mono); font-size: 2.5rem; line-height: 1; font-weight: 400;
-  font-variant-numeric: tabular-nums; letter-spacing: -0.03em;
-}
-.figure span { font-size: 0.72rem; color: var(--muted); letter-spacing: 0.02em; }
-.figure.blind b { color: var(--ember); }
-.meter { height: 5px; background: var(--ember-soft); border-radius: 2px; overflow: hidden; }
-.meter i { display: block; height: 100%; background: var(--read); transition: width .28s cubic-bezier(.4,0,.2,1); }
-.counts {
-  display: grid; grid-template-columns: repeat(3, auto); gap: 4px 22px;
-  font-family: var(--mono); font-size: 0.82rem; font-variant-numeric: tabular-nums;
-}
-.counts dt { color: var(--muted); grid-row: 2; }
-.counts dd { margin: 0; grid-row: 1; font-size: 1.15rem; }
-.counts .unseen dd { color: var(--ember); }
-.risk-strip {
-  display: flex; flex-direction: column; gap: 3px;
-  border-left: 2px solid var(--danger); padding: 2px 0 2px 12px;
-}
-.risk-strip .tag {
-  font-family: var(--mono); font-size: 0.7rem; font-weight: 500;
-  letter-spacing: 0.1em; color: var(--danger);
-}
-.risk-strip .where { font-family: var(--mono); font-size: 0.82rem; }
-.risk-strip .what { font-size: 0.82rem; color: var(--muted); }
-.vscode .cta, .vscode .files tbody tr { cursor: pointer; }
-.cta {
-  font-family: var(--sans); font-size: 0.85rem; font-weight: 500;
-  padding: 9px 14px; border-radius: 3px; border: 1px solid var(--ink);
-  background: var(--ink); color: var(--surface); cursor: default; text-align: center;
-}
-
-/* ---------------------------------------------------------------- control */
-
-.control { padding: 20px 22px; display: flex; flex-direction: column; gap: 14px; }
-.control label { display: flex; flex-direction: column; gap: 3px; }
-.control .val {
-  font-family: var(--mono); font-size: 0.82rem; color: var(--muted);
-  font-variant-numeric: tabular-nums;
-}
-input[type="range"] {
-  -webkit-appearance: none; appearance: none; width: 100%; height: 22px;
-  background: transparent; cursor: pointer; margin: 0;
-}
-input[type="range"]::-webkit-slider-runnable-track {
-  height: 2px; background: var(--rule); border-radius: 1px;
-}
-input[type="range"]::-moz-range-track { height: 2px; background: var(--rule); border-radius: 1px; }
-input[type="range"]::-webkit-slider-thumb {
-  -webkit-appearance: none; appearance: none; width: 15px; height: 15px; margin-top: -6.5px;
-  border-radius: 50%; background: var(--ember); border: 2px solid var(--surface);
-  box-shadow: 0 0 0 1px var(--ember);
-}
-input[type="range"]::-moz-range-thumb {
-  width: 15px; height: 15px; border-radius: 50%; background: var(--ember);
-  border: 2px solid var(--surface); box-shadow: 0 0 0 1px var(--ember);
-}
-.ticks {
-  display: flex; justify-content: space-between;
-  font-family: var(--mono); font-size: 0.68rem; color: var(--faint);
-  font-variant-numeric: tabular-nums; margin-top: -6px;
-}
-.verdict {
-  font-size: 0.85rem; line-height: 1.55; color: var(--muted);
-  border-top: 1px solid var(--rule); padding-top: 12px;
-}
-.verdict b { color: var(--ink); }
-
-/* ---------------------------------------------------------------- signals */
-
-.signals { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
-.signals th {
-  text-align: left; font-weight: 500; font-size: 0.7rem; letter-spacing: 0.1em;
-  text-transform: uppercase; color: var(--faint); padding-bottom: 8px; font-family: var(--mono);
-}
-.signals td { padding: 9px 0; border-top: 1px solid var(--rule); vertical-align: baseline; }
-.signals td:first-child { font-family: var(--mono); font-size: 0.84rem; width: 6.5rem; }
-.signals td:last-child {
-  text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums;
-  width: 3rem; color: var(--muted);
-}
-.signals .desc { color: var(--muted); font-size: 0.87rem; }
-.signals.kv td:first-child { width: 45%; }
-.signals.kv td:last-child {
-  text-align: left; font-family: var(--mono); font-size: 0.8rem; width: auto;
-}
-
-.ineq { display: flex; flex-direction: column; gap: 0; }
-.ineq-row {
-  display: grid; grid-template-columns: minmax(0,1fr) auto auto;
-  gap: 16px; align-items: center;
-  padding: 13px 0; border-top: 1px solid var(--rule);
-}
-.ineq-row:last-child { border-bottom: 1px solid var(--rule); }
-.ineq-row .what { font-size: 0.92rem; }
-.ineq-row .pts {
-  font-family: var(--mono); font-size: 0.8rem; color: var(--muted);
-  font-variant-numeric: tabular-nums;
-}
-.pill {
-  font-family: var(--mono); font-size: 0.68rem; font-weight: 500;
-  letter-spacing: 0.08em; text-transform: uppercase;
-  padding: 3px 8px; border-radius: 2px; white-space: nowrap;
-}
-.pill.yes { background: var(--read-soft); color: var(--read); }
-.pill.no { background: var(--ember-soft); color: var(--ember); }
-
-/* ---------------------------------------------------------------- code */
-
-.code-wrap { overflow-x: auto; }
-.code {
-  font-family: var(--mono); font-size: 0.78rem; line-height: 1.75;
-  padding: 14px 0; min-width: 460px;
-}
-.code .ln { display: grid; grid-template-columns: 3.2rem 1fr; }
-.code .n {
-  text-align: right; padding-right: 14px; color: var(--faint);
-  font-variant-numeric: tabular-nums; user-select: none;
-}
-.code .t { white-space: pre; padding-right: 16px; }
-.code .ln.unread { background: var(--ember-soft); }
-.code .ln.unread .t { color: var(--ember); }
-.code .ln.unread .n { color: var(--ember); opacity: .75; }
-.code .ln.read .t { color: var(--ink); }
-.code .ln.read .n { color: var(--faint); }
-.code .ln.dim .t { color: var(--faint); opacity: .38; }
-.tabs { display: flex; flex-wrap: wrap; gap: 6px; }
-.tab {
-  font-family: var(--mono); font-size: 0.74rem; padding: 5px 10px;
-  border: 1px solid var(--rule); border-radius: 3px; background: transparent;
-  color: var(--muted); cursor: pointer;
-}
-.tab[aria-selected="true"] { border-color: var(--ink); color: var(--ink); background: var(--surface); }
-.tab:hover { color: var(--ink); }
-.legend {
-  display: flex; gap: 18px; flex-wrap: wrap;
-  font-family: var(--mono); font-size: 0.72rem; color: var(--muted);
-}
-.swatch { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 6px; vertical-align: baseline; }
-
-/* ---------------------------------------------------------------- files */
-
-.files { width: 100%; border-collapse: collapse; font-size: 0.87rem; }
+/* Fixed layout so the numbers keep their place: the file column takes what is
+   left, and a column whose header is hidden on a narrow panel is gone rather
+   than reserved. */
+.files { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.files th.n { width: 6rem; }
+.files th.risk { width: 15rem; }
 .files th {
-  text-align: left; font-family: var(--mono); font-weight: 500; font-size: 0.68rem;
-  letter-spacing: 0.1em; text-transform: uppercase; color: var(--faint); padding-bottom: 8px;
+  text-align: left;
+  font-weight: 400;
+  font-size: 0.8rem;
+  color: var(--muted);
+  padding: 0 1.25rem 0.5rem 0;
+  border-bottom: 1px solid var(--rule);
 }
-.files th.num, .files td.num { text-align: right; font-variant-numeric: tabular-nums; }
-.files th, .files td { padding-right: 20px; }
+.files th.n, .files td.n { text-align: right; font-variant-numeric: tabular-nums; }
 .files th:last-child, .files td:last-child { padding-right: 0; }
-.files td { padding-top: 9px; padding-bottom: 9px; border-top: 1px solid var(--rule); }
-.files td.path { font-family: var(--mono); font-size: 0.8rem; }
-.files td.num { font-family: var(--mono); font-size: 0.82rem; }
-.files .sev { border-left: 2px solid var(--danger); padding-left: 10px; }
-.files .cov-bad { color: var(--ember); }
-.files .cov-ok { color: var(--read); }
-
-/* ---------------------------------------------------------------- score */
-
-.score-head { display: flex; align-items: center; gap: 16px; }
-.score-head b {
-  font-family: var(--mono); font-size: 3.2rem; line-height: 1; font-weight: 400;
-  font-variant-numeric: tabular-nums; letter-spacing: -0.03em;
+.files td {
+  padding: 0.55rem 1.25rem 0.55rem 0;
+  border-bottom: 1px solid var(--rule);
+  vertical-align: baseline;
 }
-.score-track { flex: 1; height: 6px; background: var(--sunk); border-radius: 3px; overflow: hidden; }
-.score-bar { display: block; height: 100%; background: var(--ember); transition: width .28s cubic-bezier(.4,0,.2,1); }
-.metrics { display: flex; flex-direction: column; }
-.metric {
-  display: grid; grid-template-columns: 8rem minmax(0,1fr) 3rem;
-  gap: 14px; align-items: center; padding: 10px 0; border-top: 1px solid var(--rule);
+.files tbody tr { cursor: pointer; }
+.files tbody tr:hover td { background: var(--sunk); }
+.files tbody tr[aria-selected="true"] td { background: var(--unread-wash); }
+.files td.path {
+  font-family: var(--code); font-size: 0.86rem; overflow-wrap: anywhere;
 }
-.metric:last-child { border-bottom: 1px solid var(--rule); }
-.metric .label { font-size: 0.87rem; }
-.metric .track { height: 4px; background: var(--sunk); border-radius: 2px; overflow: hidden; }
-.metric .track i { display: block; height: 100%; background: var(--read); transition: width .28s cubic-bezier(.4,0,.2,1); }
-.metric.low .track i { background: var(--ember); }
-.metric.crit .track i { background: var(--danger); }
-.metric .pct {
-  text-align: right; font-family: var(--mono); font-size: 0.87rem; font-variant-numeric: tabular-nums;
-}
+.files td.n { font-family: var(--code); font-size: 0.86rem; }
+.files td.n.some { color: var(--unread); }
+.files .of { color: var(--muted); }
+.files td.risk { font-size: 0.82rem; color: var(--muted); }
+.files td.risk.severe { color: var(--severe); }
+.files tr.done td.path { color: var(--muted); }
 
+/* --------------------------------------------------------------- the code */
+
+.code {
+  font-family: var(--code);
+  font-size: 0.82rem;
+  line-height: 1.7;
+  background: var(--sunk);
+  border-radius: 3px;
+  overflow-x: auto;
+  padding: 0.75rem 0;
+}
+.ln { display: grid; grid-template-columns: 3.75rem 1fr; }
+.ln .num {
+  text-align: right;
+  padding-right: 1rem;
+  color: var(--muted);
+  opacity: 0.55;
+  user-select: none;
+}
+.ln .txt { white-space: pre; padding-right: 1.5rem; }
+.ln.unread { background: var(--unread-wash); box-shadow: inset 3px 0 0 var(--unread); }
+.ln.unread.severe { box-shadow: inset 3px 0 0 var(--severe); }
+.ln.unread .num { color: var(--unread); opacity: 1; }
+.ln.read .txt { opacity: 0.45; }
+.vscode .ln.unread { cursor: pointer; }
+.caption { margin: 0.6rem 0 0; font-size: 0.82rem; color: var(--muted); }
+
+/* --------------------------------------------------------- the definition */
+
+.rule { border: 0; border-top: 1px solid var(--rule); margin: 0; }
+
+.def { display: flex; flex-direction: column; gap: 0.9rem; }
+.def h2 { margin: 0; font-size: 1rem; font-weight: 600; }
+.slider { display: flex; align-items: center; gap: 1rem; max-width: 34rem; }
+.slider input { flex: 1; accent-color: var(--unread); }
+.slider output {
+  font-family: var(--code);
+  font-size: 0.86rem;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.def p { margin: 0; color: var(--muted); max-width: 60ch; }
+.def p .n { color: var(--fg); font-variant-numeric: tabular-nums; }
+
+details summary {
+  cursor: pointer;
+  color: var(--link);
+  font-size: 0.9rem;
+  width: fit-content;
+}
+details summary:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
+details[open] summary { margin-bottom: 1rem; }
+
+.kv { width: 100%; border-collapse: collapse; margin-bottom: 1.5rem; }
+.kv:last-child { margin-bottom: 0; }
+.kv caption {
+  text-align: left;
+  font-size: 0.82rem;
+  color: var(--muted);
+  padding-bottom: 0.4rem;
+}
+.kv td {
+  padding: 0.4rem 1.25rem 0.4rem 0;
+  border-top: 1px solid var(--rule);
+  vertical-align: baseline;
+  font-size: 0.86rem;
+}
+.kv td:last-child { padding-right: 0; }
+.kv td.k { font-family: var(--code); width: 9rem; }
+.kv td.v { color: var(--muted); }
+.kv td.pts { font-family: var(--code); text-align: right; width: 3rem; }
+
+@media (min-width: 40.001rem) {
+  .files .of { display: none; }
+}
+@media (max-width: 40rem) {
+  .page { padding: 2rem 1.1rem 3rem; gap: 2rem; }
+  .map-strip { height: 3rem; }
+  .map-legend { display: none; }
+  .files .risk, .files .changed { display: none; }
+}
 
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
@@ -356,163 +261,70 @@ input[type="range"]::-moz-range-thumb {
 
 <div class="page">
 
-<header>
-  <div class="eyebrow" id="head-scope">review report</div>
-  <h1>Blindspot</h1>
-</header>
-
-<!-- ============================================================== the count -->
-<section>
-  <div class="split">
-    <div class="panel card">
-      <div class="card-head">
-        <span class="eyebrow">Blindspot</span>
-        <span class="mono" style="font-size:.72rem;color:var(--faint)">pre-commit</span>
-      </div>
-      <div class="figures">
-        <div class="figure">
-          <b id="f-cov">64%</b><span>review coverage</span>
-        </div>
-        <div class="figure blind">
-          <b id="f-blind">36%</b><span>blindspot</span>
-        </div>
-      </div>
-      <div class="meter"><i id="f-meter" style="width:64%"></i></div>
-      <dl class="counts">
-        <dd id="f-total">182</dd><dd id="f-read">116</dd><dd class="unseen-v" id="f-unseen">66</dd>
-        <dt>changed</dt><dt>reviewed</dt><dt class="unseen">unseen</dt>
-      </dl>
-      <div class="risk-strip" id="f-risk">
-        <span class="tag">⚠ CRITICAL</span>
-        <span class="where" id="f-risk-where">src/auth/session.ts</span>
-        <span class="what" id="f-risk-what">lines 9–34 unread · authentication / session code</span>
-      </div>
-      <div class="cta">Review Blindspot</div>
-    </div>
-
-    <div class="panel" style="padding:22px 24px">
-      <div class="card-head">
-        <span class="eyebrow">Review Score</span>
-        <span class="mono" style="font-size:.72rem;color:var(--faint)">weighted by what it covered</span>
-      </div>
-      <div class="score-head" style="margin-top:14px">
-        <b id="s-score">49</b>
-        <span class="score-track"><i class="score-bar" id="s-bar" style="width:49%"></i></span>
-      </div>
-      <div class="metrics" id="metrics" style="margin-top:16px"></div>
-    </div>
-  </div>
+<section class="answer" id="answer">
+  <h1 id="head"></h1>
+  <p id="sub"></p>
+  <button class="act" id="go" type="button">Go to the first unread line</button>
 </section>
 
-<!-- =============================================================== the files -->
-<section>
-  <div class="col">
-    <div class="eyebrow">by file · worst risk first</div>
-  </div>
-  <div class="panel" style="padding:18px 22px">
-    <div class="table-wrap">
-      <table class="files">
-        <thead>
-          <tr>
-            <th>file</th>
-            <th class="num">changed</th>
-            <th class="num">unseen</th>
-            <th class="num">coverage</th>
-            <th>blindspot risk</th>
-          </tr>
-        </thead>
-        <tbody id="files"></tbody>
-      </table>
-    </div>
-  </div>
+<section class="map" id="map" aria-label="Every changed line, by file">
+  <div class="map-strip" id="strip"></div>
+  <div class="map-legend" id="strip-labels" aria-hidden="true"></div>
 </section>
 
-<!-- ================================================================ the diff -->
 <section>
-  <div class="col">
-    <div class="eyebrow">every target line · orange is unread</div>
-  </div>
-  <div class="tabs" id="tabs" role="tablist"></div>
-  <div class="panel">
-    <div class="code-wrap"><div class="code" id="code"></div></div>
-  </div>
-  <div class="legend">
-    <span><i class="swatch" style="background:var(--ember)"></i>unreviewed</span>
-    <span><i class="swatch" style="background:var(--read)"></i>reviewed</span>
-    <span id="code-summary"></span>
-  </div>
+  <table class="files">
+    <thead>
+      <tr>
+        <th>File</th>
+        <th class="n">Unread</th>
+        <th class="n changed">Changed</th>
+        <th class="risk">Riskiest thing you missed</th>
+      </tr>
+    </thead>
+    <tbody id="files"></tbody>
+  </table>
 </section>
 
-<!-- ============================================================ the settings -->
 <section>
-  <div class="col">
-    <div class="eyebrow">settings · what counts as read</div>
-  </div>
+  <div class="code" id="code"></div>
+  <p class="caption" id="caption"></p>
+</section>
 
-  <div class="split">
-    <div class="col">
-      <div class="panel control">
-        <label for="thr">
-          <span class="eyebrow">review threshold</span>
-          <span class="val" id="thr-val">3 points</span>
-        </label>
-        <input type="range" id="thr" min="1" max="6" step="1" value="3"
-               aria-describedby="thr-verdict">
-        <div class="ticks"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span></div>
-        <p class="verdict" id="thr-verdict"></p>
-      </div>
-      <div class="ineq" id="ineq"></div>
-    </div>
+<hr class="rule">
 
-    <div class="col">
-      <div class="table-wrap">
-        <table class="signals">
-          <thead>
-            <tr><th>signal</th><th>earned when</th><th>pts</th></tr>
-          </thead>
-          <tbody id="signal-rows"></tbody>
-        </table>
-      </div>
-      <div class="table-wrap">
-        <table class="signals kv">
-          <thead>
-            <tr><th>setting</th><th>in effect</th></tr>
-          </thead>
-          <tbody id="settings-rows"></tbody>
-        </table>
-      </div>
-    </div>
+<section class="def">
+  <h2>What counts as read</h2>
+  <div class="slider">
+    <input type="range" id="thr" min="1" max="6" step="1" value="3"
+           aria-label="Points a line needs before it counts as read">
+    <output id="thr-out" for="thr"></output>
   </div>
+  <p id="thr-note"></p>
+  <details>
+    <summary>How a line earns its points</summary>
+    <table class="kv">
+      <caption>Signals, and what each is worth here</caption>
+      <tbody id="signal-rows"></tbody>
+    </table>
+    <table class="kv">
+      <caption>The settings this report was measured under</caption>
+      <tbody id="setting-rows"></tbody>
+    </table>
+  </details>
 </section>
 
 </div>
 
 <script>
 // Inside the editor the page is a webview and can talk back to it; in a
-// browser it is a demo and cannot.
+// browser it is the demo and cannot.
 const vscode = typeof acquireVsCodeApi === 'function' ? acquireVsCodeApi() : null;
 
 let DATA, W, LINES;
 const RISK_RANK = { critical: 4, high: 3, medium: 2, low: 1 };
-const SCORE_W = { coverage: 0.4, critical: 0.3, newCode: 0.15, ai: 0.15 };
 
-const THRESHOLD_LABEL = {
-  1: '1 point — a line that merely crossed the screen counts as read',
-  2: '2 points — on screen, in the focused editor, counts as read',
-  3: '3 points — on screen + paused + caret moved (default)',
-  4: '4 points — you stopped to read it and moved the caret to it',
-  5: '5 points — effectively only the lines you typed yourself',
-  6: '6 points — every signal has to be there',
-};
-
-const THRESHOLD_NOTE = {
-  1: 'Counts a line you scrolled past as read. Coverage goes up and the number means nothing.',
-  2: 'Passes without the viewport ever stopping. This is where the first proposition — scrolling is not reviewing — breaks.',
-  3: 'The loosest definition under which all three propositions hold. The default.',
-  4: 'Only lines you moved the caret to or edited. Code read by eye alone starts showing up as blindspot.',
-  5: 'Only the lines you typed. Everything an agent wrote becomes blindspot.',
-  6: 'Close to unreachable. Everything is a blindspot.',
-};
+// ------------------------------------------------------------------- model
 
 function pointsOf(sig) {
   return (sig.visible ? W.visible : 0) + (sig.focused ? W.focused : 0) +
@@ -529,74 +341,40 @@ function isRead(l, threshold) {
 function index(data) {
   return data.files.map(f => ({
     path: f.path,
-    lines: f.lines.map(l => ({ ...l, points: pointsOf(l.signals), severe: l.risk === 'critical' || l.risk === 'high' })),
+    lines: f.lines.map(l => ({
+      ...l,
+      points: pointsOf(l.signals),
+      severe: l.risk === 'critical' || l.risk === 'high',
+    })),
   }));
 }
 
 function compute(threshold) {
-  const buckets = { coverage: [0, 0], critical: [0, 0], newCode: [0, 0], ai: [0, 0] };
+  let total = 0, unseen = 0, severeTotal = 0, severeUnseen = 0;
   const files = [];
 
   for (const f of LINES) {
-    let reviewed = 0, aiLines = 0, unseen = [];
+    const missed = [];
     for (const l of f.lines) {
-      buckets.coverage[1]++; buckets.newCode[1]++;
-      if (l.severe) buckets.critical[1]++;
-      if (l.ai) { aiLines++; buckets.ai[1]++; }
-      if (isRead(l, threshold)) {
-        reviewed++;
-        buckets.coverage[0]++; buckets.newCode[0]++;
-        if (l.severe) buckets.critical[0]++;
-        if (l.ai) buckets.ai[0]++;
-      } else {
-        unseen.push(l);
+      total++;
+      if (l.severe) severeTotal++;
+      if (!isRead(l, threshold)) {
+        missed.push(l);
+        unseen++;
+        if (l.severe) severeUnseen++;
       }
     }
-    const changed = f.lines.length;
     files.push({
       path: f.path,
-      changed,
-      reviewed,
-      unseen: changed - reviewed,
-      coverage: changed ? reviewed / changed : 1,
-      aiLines,
-      blindspotRisk: unseen.length ? maxRisk(unseen.map(l => l.risk)) : 'low',
-      risk: maxRisk(f.lines.map(l => l.risk)),
-      hunks: groupHunks(unseen),
+      changed: f.lines.length,
+      unseen: missed.length,
+      risk: missed.length ? maxRisk(missed.map(l => l.risk)) : 'low',
+      hunks: groupHunks(missed),
     });
   }
 
-  const total = buckets.coverage[1], reviewed = buckets.coverage[0];
-  return {
-    total, reviewed, unseen: total - reviewed,
-    coverage: total ? reviewed / total : 1,
-    files,
-    score: composite(buckets),
-  };
+  return { total, unseen, severeTotal, severeUnseen, files };
 }
-
-function composite(b) {
-  const measured = {
-    coverage: b.coverage[1] > 0, critical: b.critical[1] > 0,
-    newCode: b.newCode[1] > 0, ai: b.ai[1] > 0,
-  };
-  const parts = [['coverage', SCORE_W.coverage], ['critical', SCORE_W.critical],
-                 ['newCode', SCORE_W.newCode], ['ai', SCORE_W.ai]];
-  const active = parts.reduce((s, [k, w]) => s + (measured[k] ? w : 0), 0);
-  let score = 0;
-  if (active > 0) for (const [k, w] of parts) {
-    if (measured[k]) score += (w / active) * ratio(b[k]);
-  }
-  return {
-    coverage: ratio(b.coverage), critical: ratio(b.critical),
-    newCode: ratio(b.newCode), ai: ratio(b.ai),
-    score: Math.round(score * 100), measured,
-  };
-}
-
-const ratio = ([hit, tot]) => (tot > 0 ? hit / tot : 0);
-const pct = v => Math.round(Math.max(0, Math.min(1, v)) * 100);
-const maxRisk = ls => ls.reduce((best, l) => (RISK_RANK[l] > RISK_RANK[best] ? l : best), 'low');
 
 function groupHunks(unseen) {
   if (!unseen.length) return [];
@@ -618,185 +396,195 @@ function groupHunks(unseen) {
   return out;
 }
 
+const maxRisk = ls => ls.reduce((best, l) => (RISK_RANK[l] > RISK_RANK[best] ? l : best), 'low');
+const severe = r => r === 'critical' || r === 'high';
+const plural = (n, one, many) => n + ' ' + (n === 1 ? one : many);
+
+function rank(files) {
+  return [...files].sort((a, b) =>
+    (b.unseen > 0) - (a.unseen > 0) ||
+    RISK_RANK[b.risk] - RISK_RANK[a.risk] ||
+    b.unseen - a.unseen ||
+    a.path.localeCompare(b.path));
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c =>
+    c === '&' ? '&amp;' : c === '<' ? '&lt;' : c === '>' ? '&gt;' : c === '"' ? '&quot;' : '&#39;');
+}
+
 // ------------------------------------------------------------------ render
 
 let threshold = 3;
-let activeFile = null;
+let selected = null;
 let state = null;
 
 const $ = id => document.getElementById(id);
 
-function sortFiles(files) {
-  const copy = [...files];
-  return copy.sort((a, b) => {
-    if ((a.unseen > 0) !== (b.unseen > 0)) return a.unseen > 0 ? -1 : 1;
-    if (!a.unseen) return RISK_RANK[b.risk] - RISK_RANK[a.risk];
-    return RISK_RANK[b.blindspotRisk] - RISK_RANK[a.blindspotRisk] ||
-           b.unseen - a.unseen || a.path.localeCompare(b.path);
-  });
+function renderAnswer() {
+  const clear = state.unseen === 0;
+  $('answer').classList.toggle('clear', clear);
+  $('head').innerHTML = clear
+    ? 'You read every changed line.'
+    : '<span class="n">' + state.unseen + '</span> ' +
+      (state.unseen === 1 ? 'line you did not read' : 'lines you did not read');
+
+  if (clear) {
+    $('sub').textContent = 'All ' + plural(state.total, 'changed line', 'changed lines') +
+      ' cleared the threshold below.';
+  } else {
+    const parts = ['of ' + plural(state.total, 'changed line', 'changed lines') + '.'];
+    if (state.severeUnseen > 0) {
+      parts.push('<b>' + state.severeUnseen + ' of them in high-risk code.</b>');
+    } else if (state.severeTotal > 0) {
+      parts.push('None of them in the high-risk code.');
+    }
+    $('sub').innerHTML = parts.join(' ');
+  }
+  $('go').hidden = clear || !vscode;
 }
 
-function renderCard() {
-  const cov = pct(state.coverage);
-  $('f-cov').textContent = cov + '%';
-  $('f-blind').textContent = (100 - cov) + '%';
-  $('f-meter').style.width = cov + '%';
-  $('f-total').textContent = state.total;
-  $('f-read').textContent = state.reviewed;
-  $('f-unseen').textContent = state.unseen;
-  $('head-scope').textContent = state.total + ' lines · ' + state.files.length +
-    (state.files.length === 1 ? ' file' : ' files');
+function renderMap() {
+  const ranked = state.files;
+  $('strip').innerHTML = ranked.map(f => {
+    const src = LINES.find(x => x.path === f.path);
+    const bars = src.lines.map(l => {
+      const read = isRead(l, threshold);
+      return '<i class="' + (read ? 'read' : 'unread' + (l.severe ? ' severe' : '')) + '"></i>';
+    }).join('');
+    return '<button class="map-file" type="button" style="flex:' + f.changed + ' 1 0"' +
+      ' data-file="' + escapeHtml(f.path) + '"' +
+      ' aria-pressed="' + (f.path === selected) + '"' +
+      ' title="' + escapeHtml(f.path + ' — ' + f.unseen + ' of ' + f.changed + ' unread') + '">' +
+      bars + '</button>';
+  }).join('');
 
-  const ranked = sortFiles(state.files);
-  const worst = ranked.find(f => f.unseen > 0 && (f.blindspotRisk === 'critical' || f.blindspotRisk === 'high'));
-  const strip = $('f-risk');
-  if (worst) {
-    const h = worst.hunks.find(x => x.risk === worst.blindspotRisk) || worst.hunks[0];
-    strip.style.display = '';
-    strip.querySelector('.tag').textContent = '⚠ ' + (worst.blindspotRisk === 'critical' ? 'CRITICAL' : 'HIGH RISK');
-    $('f-risk-where').textContent = worst.path;
-    $('f-risk-what').textContent =
-      'lines ' + h.start + '–' + h.end + ' unread · ' + h.reason;
-  } else {
-    strip.style.display = 'none';
+  $('strip-labels').innerHTML = ranked.map(f =>
+    '<span style="flex:' + f.changed + ' 1 0">' +
+    escapeHtml(f.path.split('/').pop()) + '</span>').join('');
+
+  for (const b of $('strip').querySelectorAll('.map-file')) {
+    b.addEventListener('click', () => select(b.dataset.file));
   }
 }
 
-const SIGNAL_ROWS = [
+function renderFiles() {
+  $('files').innerHTML = state.files.map(f =>
+    '<tr data-file="' + escapeHtml(f.path) + '"' +
+      ' aria-selected="' + (f.path === selected) + '"' +
+      (f.unseen ? '' : ' class="done"') + '>' +
+      '<td class="path">' + escapeHtml(f.path) + '</td>' +
+      '<td class="n' + (f.unseen ? ' some' : '') + '">' + f.unseen +
+        '<span class="of"> / ' + f.changed + '</span></td>' +
+      '<td class="n changed">' + f.changed + '</td>' +
+      '<td class="risk' + (f.unseen && severe(f.risk) ? ' severe' : '') + '">' +
+        (f.unseen ? escapeHtml(f.hunks[0].reason) : 'nothing') + '</td>' +
+    '</tr>').join('');
+
+  for (const row of $('files').querySelectorAll('tr[data-file]')) {
+    row.addEventListener('click', () => select(row.dataset.file));
+  }
+}
+
+function renderCode() {
+  const file = LINES.find(f => f.path === selected);
+  if (!file) {
+    $('code').innerHTML = '';
+    $('caption').textContent = 'Nothing has been opened here yet.';
+    return;
+  }
+  $('code').innerHTML = file.lines.map(l => {
+    const read = isRead(l, threshold);
+    const cls = read ? 'read' : 'unread' + (l.severe ? ' severe' : '');
+    return '<div class="ln ' + cls + '" data-line="' + l.n + '">' +
+      '<span class="num">' + l.n + '</span>' +
+      '<span class="txt">' + escapeHtml(l.text || ' ') + '</span></div>';
+  }).join('');
+
+  const f = state.files.find(x => x.path === selected);
+  $('caption').textContent = f.unseen
+    ? f.path + ' — ' + f.unseen + ' of ' + f.changed + ' lines unread'
+    : f.path + ' — all ' + f.changed + ' lines read';
+
+  if (!vscode) return;
+  for (const ln of $('code').querySelectorAll('.ln.unread')) {
+    ln.addEventListener('click', () =>
+      vscode.postMessage({ type: 'open', file: selected, line: Number(ln.dataset.line) }));
+  }
+}
+
+function renderThreshold() {
+  const cap = Object.values(W).reduce((a, b) => a + b, 0);
+  $('thr-out').textContent = threshold + ' of ' + cap + ' points';
+  $('thr-note').innerHTML = 'At <span class="n">' + threshold + '</span> points, ' +
+    '<span class="n">' + state.unseen + '</span> of ' +
+    '<span class="n">' + state.total + '</span> lines count as unread. ' +
+    'This preview leaves your setting alone.';
+}
+
+const SIGNALS = [
   ['visible', s => 'on screen for ' + ms(s.visibleMsForPoint) + ' or more'],
-  ['focused', s => 'in the active editor, window focused, ' + ms(s.focusedMsForPoint) + ' or more'],
-  ['dwell', s => 'the viewport held still for ' + ms(s.dwellMs) + ' or more'],
+  ['focused', s => 'in the active editor, window focused, for ' + ms(s.focusedMsForPoint)],
+  ['dwell', s => 'the viewport held still for ' + ms(s.dwellMs)],
   ['caret', () => 'you put the cursor on it, or the mouse came to rest on it'],
   ['edited', () => 'you typed it yourself'],
   ['revisit', s => 'you came back to it after ' + ms(s.revisitGapMs) + ' away'],
 ];
 
 function ms(v) {
-  return v >= 1000 ? +(v / 1000).toFixed(v % 1000 ? 1 : 0) + ' s' : v + ' ms';
+  const n = Number(v);
+  if (!Number.isFinite(n)) return '—';
+  return n >= 1000 ? +(n / 1000).toFixed(n % 1000 ? 1 : 0) + ' s' : n + ' ms';
 }
 
-function renderSettings() {
+// The signals come from the configured weights, not from a table written by
+// hand: a panel that says +1 while the config says +2 is worse than one that
+// says nothing.
+function renderDefinition() {
   const cfg = DATA.settings;
-  $('signal-rows').innerHTML = SIGNAL_ROWS.map(([name, when]) =>
-    '<tr><td>' + name + '</td><td class="desc">' + escapeHtml(String(when(cfg))) +
-    '</td><td>+' + escapeHtml(String(W[name] || 0)) + '</td></tr>').join('');
+  $('signal-rows').innerHTML = SIGNALS.map(([name, when]) =>
+    '<tr><td class="k">' + name + '</td>' +
+    '<td class="v">' + escapeHtml(when(cfg)) + '</td>' +
+    '<td class="pts">+' + escapeHtml(W[name] || 0) + '</td></tr>').join('');
 
   const rows = [
-    ['review threshold', DATA.threshold + ' of ' + total(W) + ' points'],
-    ['read acknowledged at', ms(cfg.readAckMs) + ' of focused time'],
-    ['focus credit caps at', ms(cfg.focusCapMs)],
-    ['idle after', ms(cfg.idleAfterMs) + ' without caret, scroll, mouse or edit'],
-    ['reading speed ceiling', cfg.readingSpeedGuard ? cfg.maxLinesPerSecond + ' lines/sec' : 'off'],
-    ['focal weighting', cfg.focalModel
-      ? 'on · full credit ±' + cfg.focalSpanLines + ' lines, floor ' + cfg.peripheralFloor +
-        ' at ' + cfg.focalDecayLines
-      : 'off · every visible line credited equally'],
-    ['content scaling', cfg.contentScaling ? 'on · thresholds scale with tokens per line' : 'off'],
+    ['threshold', DATA.threshold + ' points, from blindspot.reviewThresholdPoints'],
+    ['read after', ms(cfg.readAckMs) + ' of focused time on the line'],
+    ['focus caps', 'credit stops growing after ' + ms(cfg.focusCapMs)],
+    ['idle after', ms(cfg.idleAfterMs) + ' with no caret, scroll, mouse or edit'],
+    ['scroll limit', cfg.readingSpeedGuard
+      ? 'past ' + cfg.maxLinesPerSecond + ' lines a second, nothing counts'
+      : 'off'],
+    ['focus falloff', cfg.focalModel
+      ? 'full credit within ' + cfg.focalSpanLines + ' lines, down to ' +
+        cfg.peripheralFloor + ' by ' + cfg.focalDecayLines
+      : 'off, every visible line credited alike'],
+    ['line cost', cfg.contentScaling ? 'thresholds scale with tokens on the line' : 'off'],
   ];
-  $('settings-rows').innerHTML = rows.map(([k, v]) =>
-    '<tr><td>' + k + '</td><td class="desc">' + escapeHtml(String(v)) + '</td></tr>').join('');
+  $('setting-rows').innerHTML = rows.map(([k, v]) =>
+    '<tr><td class="k">' + k + '</td><td class="v" colspan="2">' +
+    escapeHtml(v) + '</td></tr>').join('');
 }
 
-const total = w => Object.values(w).reduce((a, b) => a + b, 0);
-
-function renderThreshold() {
-  $('thr-val').textContent = THRESHOLD_LABEL[threshold];
-  const cov = pct(state.coverage);
-  $('thr-verdict').innerHTML =
-    '<b>' + cov + '% reviewed · ' + state.unseen + ' lines unread.</b> ' + THRESHOLD_NOTE[threshold];
-}
-
-function renderIneq() {
-  const cases = [
-    { what: 'scrolled past the line', sig: { visible: true } },
-    { what: 'on screen for 0.2 s', sig: {} },
-    { what: 'visible + viewport paused + caret moved', sig: { visible: true, focused: true, dwell: true, caret: true } },
-    { what: 'typed by hand', sig: { visible: true, focused: true, caret: true, edited: true } },
-  ];
-  $('ineq').innerHTML = cases.map(c => {
-    const p = pointsOf({ visible: !!c.sig.visible, focused: !!c.sig.focused,
-                         dwell: !!c.sig.dwell, caret: !!c.sig.caret, edited: !!c.sig.edited });
-    const ok = p >= threshold;
-    return '<div class="ineq-row"><span class="what">' + c.what + '</span>' +
-      '<span class="pts">' + p + ' pts</span>' +
-      '<span class="pill ' + (ok ? 'yes' : 'no') + '">' + (ok ? 'reviewed' : 'blindspot') + '</span></div>';
-  }).join('');
-}
-
-function renderTabs() {
-  $('tabs').innerHTML = LINES.map(f =>
-    '<button class="tab" role="tab" data-file="' + escapeHtml(f.path) + '" aria-selected="' +
-    (f.path === activeFile) + '">' + escapeHtml(f.path) + '</button>').join('');
-  for (const b of document.querySelectorAll('.tab')) {
-    b.addEventListener('click', () => { activeFile = b.dataset.file; renderTabs(); renderCode(); });
-  }
-}
-
-function renderCode() {
-  const file = LINES.find(f => f.path === activeFile);
-  if (!file) {
-    $('code').innerHTML = '';
-    $('code-summary').textContent = 'nothing to measure yet';
-    return;
-  }
-  const rows = file.lines.map(l => {
-    const cls = isRead(l, threshold) ? 'read' : 'unread';
-    return '<div class="ln ' + cls + '"><span class="n">' + l.n + '</span>' +
-      '<span class="t">' + escapeHtml(l.text || ' ') + '</span></div>';
-  });
-  $('code').innerHTML = rows.join('');
-
-  const f = state.files.find(x => x.path === activeFile);
-  $('code-summary').textContent =
-    f.unseen + ' / ' + f.changed + ' unread · ' + pct(f.coverage) + '% coverage' +
-    (f.aiLines ? ' · ' + pct(f.aiLines / f.changed) + '% machine-written' : '');
-}
-
-
-function renderFiles() {
-  const ranked = sortFiles(state.files);
-  $('files').innerHTML = ranked.map(f => {
-    const severe = f.unseen > 0 && (f.blindspotRisk === 'critical' || f.blindspotRisk === 'high');
-    const covCls = f.coverage >= 0.9 ? 'cov-ok' : f.coverage < 0.7 ? 'cov-bad' : '';
-    const first = f.hunks.length ? f.hunks[0].start : 1;
-    return '<tr data-file="' + escapeHtml(f.path) + '" data-line="' + first + '">' +
-      '<td class="path' + (severe ? ' sev' : '') + '">' + escapeHtml(f.path) + '</td>' +
-      '<td class="num">' + f.changed + '</td>' +
-      '<td class="num" style="color:' + (f.unseen ? 'var(--ember)' : 'var(--faint)') + '">' + f.unseen + '</td>' +
-      '<td class="num ' + covCls + '">' + pct(f.coverage) + '%</td>' +
-      '<td class="mono" style="font-size:.76rem;color:' + (severe ? 'var(--danger)' : 'var(--muted)') + '">' +
-        (f.unseen ? f.blindspotRisk : '—') + '</td>' +
-    '</tr>';
-  }).join('');
-}
-
-function renderScore() {
-  const s = state.score;
-  $('s-score').textContent = s.score;
-  $('s-bar').style.width = Math.max(0, Math.min(100, s.score)) + '%';
-  const rows = [
-    ['Coverage', s.coverage, true],
-    ['Critical', s.critical, s.measured.critical],
-    ['New code', s.newCode, s.measured.newCode],
-    ['AI-generated', s.ai, s.measured.ai],
-  ];
-  $('metrics').innerHTML = rows.map(([label, v, measured]) => {
-    const cls = !measured ? '' : v >= 0.9 ? '' : v >= 0.5 ? 'low' : 'crit';
-    return '<div class="metric ' + cls + '">' +
-      '<span class="label">' + label + '</span>' +
-      '<span class="track"><i style="width:' + (measured ? pct(v) : 0) + '%"></i></span>' +
-      '<span class="pct">' + (measured ? pct(v) + '%' : '—') + '</span></div>';
-  }).join('');
-}
-
-function escapeHtml(s) {
-  return s.replace(/[&<>"']/g, c =>
-    c === '&' ? '&amp;' : c === '<' ? '&lt;' : c === '>' ? '&gt;' : c === '"' ? '&quot;' : '&#39;');
+function select(path) {
+  selected = path;
+  renderMap();
+  renderFiles();
+  renderCode();
 }
 
 function renderAll() {
   state = compute(threshold);
-  renderCard(); renderThreshold(); renderIneq(); renderCode(); renderFiles(); renderScore(); renderSettings();
+  state.files = rank(state.files);
+  if (!state.files.some(f => f.path === selected)) {
+    selected = state.files.length ? state.files[0].path : null;
+  }
+  renderAnswer();
+  renderMap();
+  renderFiles();
+  renderCode();
+  renderThreshold();
+  renderDefinition();
 }
 
 $('thr').addEventListener('input', e => {
@@ -804,27 +592,18 @@ $('thr').addEventListener('input', e => {
   renderAll();
 });
 
-
-
-
-// In the editor, the file list opens the file at its first unread line and
-// the card's button jumps to the next unread hunk — the same messages the
-// old panel sent, so the extension side is unchanged.
-$('files').addEventListener('click', e => {
-  const row = e.target.closest('tr[data-file]');
-  if (row && vscode) vscode.postMessage({ type: 'open', file: row.dataset.file, line: Number(row.dataset.line) });
-});
-document.querySelector('.cta').addEventListener('click', () => {
+$('go').addEventListener('click', () => {
   if (vscode) vscode.postMessage({ type: 'reviewNext' });
 });
+
 if (vscode) document.documentElement.classList.add('vscode');
 
 function load(data) {
   DATA = data;
   W = data.weights;
   LINES = index(data);
-  if (!LINES.some(f => f.path === activeFile)) activeFile = LINES.length ? LINES[0].path : null;
-  renderTabs();
+  threshold = data.threshold;
+  $('thr').value = String(threshold);
   renderAll();
 }
 

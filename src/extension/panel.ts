@@ -98,10 +98,12 @@ export class ReportPanel {
 
   private render(data: PageData): string {
     const nonce = makeNonce();
+    // The page sets itself in the editor's own two typefaces and paints in the
+    // editor's own theme colours, so it needs nothing off the network at all —
+    // which is the version of this policy with nothing left to argue about.
     const csp = [
       `default-src 'none'`,
-      `style-src 'unsafe-inline' https://fonts.googleapis.com`,
-      `font-src https://fonts.gstatic.com`,
+      `style-src 'unsafe-inline'`,
       `script-src 'nonce-${nonce}'`,
     ].join('; ');
     // No `<` survives raw inside the embedded JSON, so no file name and no

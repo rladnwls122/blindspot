@@ -309,8 +309,8 @@ VSCodium, Cursor, Windsurf, Gitpod가 확장을 받아 가는 곳입니다. VS C
 
 ```bash
 npm install
-npm run package                              # blindspot-0.3.2.vsix 생성
-code --install-extension blindspot-0.3.2.vsix
+npm run package                              # blindspot-0.3.3.vsix 생성
+code --install-extension blindspot-0.3.3.vsix
 ```
 
 git 저장소가 열려 있으면 바로 상태 표시줄과 Activity Bar의 Blindspot 뷰에
@@ -443,7 +443,7 @@ demo/            스크립트 세션을 실제 모델로 재생
 
 ## 상태
 
-v0.3.2 — 두 모드, 인터랙티브 페이지 패널과 사이드바, 마우스 센서,
+v0.3.3 — 두 모드, 리포트 패널과 사이드바, 마우스 센서,
 interacted/pace가 `main`에 들어가 있습니다. 멀티루트 워크스페이스의 모든 폴더를
 추적하는 것은 이 버전부터이고, 그 전에는 첫 폴더 하나만 추적했습니다.
 무엇이 바뀌었는지는

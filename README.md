@@ -26,8 +26,8 @@ itself, build a `.vsix` and install that:
 
 ```bash
 npm install
-npm run package                              # produces blindspot-0.3.2.vsix
-code --install-extension blindspot-0.3.2.vsix
+npm run package                              # produces blindspot-0.3.3.vsix
+code --install-extension blindspot-0.3.3.vsix
 ```
 
 Open a git repository and coverage appears in the status bar, and in the
@@ -388,8 +388,8 @@ validated.
 
 ## Status
 
-v0.3.2 — the two modes, the interactive page as the panel, the sidebar, the
-mouse sensor, interacted lines and pace are on `main`. Every folder of a
+v0.3.3 — the two modes, the report panel, the sidebar, the mouse sensor,
+interacted lines and pace are on `main`. Every folder of a
 multi-root workspace is tracked as of this version; before it, only the first
 one was.
 See [`CHANGELOG.md`](CHANGELOG.md) for what changed and
