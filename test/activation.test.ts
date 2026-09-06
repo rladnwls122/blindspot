@@ -38,6 +38,12 @@ interface Stub {
   /** What the person is looking at, which decides who owns the shared UI. */
   activeEditor: any;
   infos: string[];
+  /** The panel is a webview, and most tests have none. */
+  allowWebview: boolean;
+  /** What the panel's page posts back, as the webview would deliver it. */
+  panelMessage: ((m: any) => any) | undefined;
+  /** Absolute paths the editor was asked to show, in order. */
+  opened: string[];
 }
 
 let stub: Stub;
@@ -67,6 +73,17 @@ function makeVscode(): any {
       onDidChangeTextDocument: () => disposable(() => {}),
       get textDocuments() {
         return stub.openDocuments;
+      },
+      openTextDocument: (uri: { fsPath: string }) => {
+        if (!fs.existsSync(uri.fsPath)) {
+          return Promise.reject(new Error(`cannot open ${uri.fsPath}`));
+        }
+        const lines = fs.readFileSync(uri.fsPath, 'utf8').split('\n');
+        return Promise.resolve({
+          uri,
+          lineCount: lines.length,
+          lineAt: (n: number) => ({ text: lines[n] ?? '' }),
+        });
       },
     },
     window: {
@@ -118,6 +135,28 @@ function makeVscode(): any {
       },
       showInputBox: () => Promise.resolve(undefined),
       setStatusBarMessage: () => disposable(() => {}),
+      showTextDocument: (doc: any) => {
+        stub.opened.push(doc.uri.fsPath);
+        return Promise.resolve({ document: doc, revealRange: () => {}, selection: undefined });
+      },
+      createWebviewPanel: () => {
+        // Most tests want the panel to be unavailable; one wants the webview.
+        if (!stub.allowWebview) throw new Error('createWebviewPanel is not available here');
+        return {
+          webview: {
+            html: '',
+            onDidReceiveMessage: (fn: (m: any) => any) => {
+              stub.panelMessage = fn;
+              return disposable(() => {});
+            },
+            postMessage: () => Promise.resolve(true),
+          },
+          title: '',
+          reveal: () => {},
+          onDidDispose: () => disposable(() => {}),
+          dispose: () => {},
+        };
+      },
     },
     languages: {
       registerHoverProvider: () => {
@@ -220,6 +259,9 @@ describe('activation outside a git repository', { concurrency: 1 }, () => {
       openDocuments: [],
       activeEditor: undefined,
       infos: [],
+      allowWebview: false,
+      panelMessage: undefined,
+      opened: [],
     };
   });
   afterEach(teardown);
@@ -306,6 +348,9 @@ describe('activation inside a git repository', { concurrency: 1 }, () => {
       openDocuments: [],
       activeEditor: undefined,
       infos: [],
+      allowWebview: false,
+      panelMessage: undefined,
+      opened: [],
     };
   });
   afterEach(teardown);
@@ -456,6 +501,43 @@ describe('activation inside a git repository', { concurrency: 1 }, () => {
       `a file in the second root is tracked: ${JSON.stringify(stub.warnings)}`,
     );
     assert.match(stub.infos.at(-1) ?? '', /marked a\.ts as reviewed/);
+    assert.deepEqual(stub.errors, []);
+  });
+
+  test('a jump from the panel lands in the root whose report the panel shows', async () => {
+    const first = tempDir();
+    const second = tempDir();
+    for (const repo of [first, second]) execFileSync('git', ['init', '-q'], { cwd: repo });
+    const file = path.join(second, 'b.ts');
+    fs.writeFileSync(file, 'const b = 1;\n');
+
+    stub.folders = [{ uri: { fsPath: first } }, { uri: { fsPath: second } }];
+    stub.allowWebview = true;
+    await extension.activate(fakeContext());
+
+    // The panel is opened by the first root; then the second root takes the
+    // shared UI over and paints its own report onto that same page.
+    await stub.commands.get('blindspot.showReport')!();
+    stub.activeEditor = {
+      document: {
+        uri: { fsPath: file, scheme: 'file' },
+        lineCount: 1,
+        lineAt: () => ({ text: 'const b = 1;' }),
+      },
+    };
+    for (const fn of stub.activeEditorListeners) fn();
+    await stub.commands.get('blindspot.showReport')!();
+
+    // A path on that page is relative to the root that put it there. Resolving
+    // it against the root that happened to create the panel opened a file that
+    // is not there, and the jump died in a warning naming someone else's tree.
+    assert.ok(stub.panelMessage, 'the webview message handler was registered');
+    await stub.panelMessage!({ type: 'open', file: 'b.ts', line: 1 });
+    assert.equal(stub.opened.at(-1), file);
+    assert.deepEqual(
+      stub.warnings.filter((w) => /could not open/i.test(w)),
+      [],
+    );
     assert.deepEqual(stub.errors, []);
   });
 

@@ -51,6 +51,16 @@ function isRepoRelative(file: string): boolean {
  */
 const controllers = new Map<string, Controller>();
 let uiOwner: Controller | undefined;
+/**
+ * The controller whose report is on the panel's page right now.
+ *
+ * Not necessarily the one that opened the panel: there is one panel and
+ * several roots, and whoever holds the UI paints it. A jump names a path
+ * relative to a root, so it has to be resolved against the root that put the
+ * path on the page — resolving it against whoever created the panel is how a
+ * file from one repository ends up opened under another repository's root.
+ */
+let panelOwner: Controller | undefined;
 
 /** Every command the extension contributes, in package.json order. */
 const COMMAND_IDS = [
@@ -202,13 +212,14 @@ function installFallbackCommands(context: vscode.ExtensionContext): void {
  * webview: what a message from a page is allowed to do is worth asserting.
  */
 export function __onPanelMessage(m: PanelMessage): Promise<void> | void {
-  return uiOwner?.handlePanelMessage(m);
+  return (panelOwner ?? uiOwner)?.handlePanelMessage(m);
 }
 
 export function deactivate(): Promise<void> | void {
   const pending = [...controllers.values()].map((c) => c.flush());
   controllers.clear();
   uiOwner = undefined;
+  panelOwner = undefined;
   disposeFallbackCommands();
   return pending.length > 0 ? Promise.all(pending).then(() => undefined) : undefined;
 }
@@ -448,7 +459,10 @@ class Controller implements vscode.Disposable {
         this.tree?.update(this.report);
         // The page's evidence costs another pass over every target line; only
         // pay for it while someone can see it.
-        ReportPanel.active?.update({ report, data: pageData(targets, sources, this.cfg, this.panelSettings()) });
+        if (ReportPanel.active) {
+          panelOwner = this;
+          ReportPanel.active.update({ report, data: pageData(targets, sources, this.cfg, this.panelSettings()) });
+        }
       }
       return this.report;
     } catch (err) {
@@ -762,7 +776,8 @@ class Controller implements vscode.Disposable {
 
   private async showPanel(refreshFirst: boolean): Promise<void> {
     if (refreshFirst) await this.refresh();
-    ReportPanel.show(this.context.extensionUri, (m) => void this.handlePanelMessage(m), this.panelView());
+    panelOwner = this;
+    ReportPanel.show(this.context.extensionUri, __onPanelMessage, this.panelView());
   }
 
   // -------------------------------------------------------------------- mode
@@ -1081,6 +1096,7 @@ class Controller implements vscode.Disposable {
 
   dispose(): void {
     this.disposed = true;
+    if (panelOwner === this) panelOwner = undefined;
     this.releaseUi();
     if (this.refreshTimer) clearInterval(this.refreshTimer);
     if (this.saveTimer) clearTimeout(this.saveTimer);
