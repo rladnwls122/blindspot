@@ -217,6 +217,13 @@ blindspot — 2/3 pts
 When "but I did read that" collides with the model's verdict, this is where it
 gets settled — and where the model gets corrected. `blindspot.explainOnHover`.
 
+The panel says the same thing at the scale of a file: every line of it, the
+ones that earned enough points dimmed, the ones that did not marked in the
+gutter — the diff you thought you reviewed, with the parts you did not read
+still in it.
+
+![A file in the Blindspot report panel, line by line: the lines that earned enough points to count as read dimmed, the unread ones marked in the gutter](media/evidence.png)
+
 ## Two modes: Diff and Reading
 
 One engine, one report; only the target differs. Switch from the status bar,
