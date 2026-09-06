@@ -2,7 +2,7 @@
 .github/**
 scripts/**
 *.vsix
-README.en.md
+README.ko.md
 node_modules/**
 src/**
 test/**

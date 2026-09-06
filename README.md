@@ -2,15 +2,15 @@
 
 [![CI](https://github.com/rladnwls122/blindspot/actions/workflows/ci.yml/badge.svg)](https://github.com/rladnwls122/blindspot/actions/workflows/ci.yml)
 
-**Blindspot은 코드 리뷰에서 개발자의 실제 주의(attention)를 측정하는 개발자 도구입니다.**
+**Blindspot is a developer-attention measurement tool for code review.**
 
-> `git blame`은 그 줄을 *누가 썼는지* 알려줍니다.
-> Blindspot은 그 줄을 *누가 읽었는지* 알려줍니다.
+> `git blame` tells you who *wrote* a line. Blindspot tells you who *read* it.
 
-diff의 각 줄에 당신의 시선이 실제로 머물렀는지를 IDE 이벤트만으로 추정하고,
-커밋 직전에 **당신이 끝내 읽지 않은 부분**을 알려주는 VS Code 확장입니다.
+A VS Code extension that estimates which lines of your diff your attention
+actually rested on — from IDE events alone, no eye tracker — and tells you,
+right before you commit, how much of it you never read.
 
-*[English README](README.en.md)*
+*[한국어 README](README.ko.md)*
 
 ```
 ┌─────────────────────────────────┐
@@ -31,203 +31,147 @@ diff의 각 줄에 당신의 시선이 실제로 머물렀는지를 IDE 이벤�
 └─────────────────────────────────┘
 ```
 
-이 카드는 목업이 아닙니다. `npm run demo`를 실행하면 실제 스코어링 모델이
-스크립트로 기록된 편집 세션을 재생하면서 저 숫자들을 계산해 냅니다.
+That card is not a mockup. Run `npm run demo` and the numbers come out of the
+real scoring model replaying a scripted editing session.
 
-## 왜 만들었나
+## Why
 
-우리에게는 *테스트*가 코드의 몇 %를 훑었는지 재는 지표가 있습니다.
-하지만 *사람*이 코드의 몇 %를 봤는지 재는 지표는 없습니다.
+We have a metric for how much of the code the *tests* touched. We have none for
+how much of it a *person* looked at. That gap was survivable when writing code
+was the slow part. It isn't anymore: a diff can now be produced faster than it
+can be read, and the natural failure mode of AI-assisted work is a large, plausible,
+unreviewed change that passes CI.
 
-코드를 쓰는 일이 느렸을 때는 그 공백이 문제가 되지 않았습니다. 지금은 아닙니다.
-diff는 읽히는 속도보다 빠르게 생산되고, AI 보조 개발의 자연스러운 실패 모드는
-**크고, 그럴듯하고, 아무도 읽지 않았는데 CI는 통과한 변경**입니다.
+Blindspot measures the thing nobody measures: attention.
 
-Blindspot은 아무도 재지 않는 것을 잽니다 — 주의(attention).
+## Prior work
 
-## 연구 배경
+"Where does a developer actually look during code review" is a question the
+literature has already measured — with dedicated eye trackers.
+[Begel et al.](https://andrewbegel.com/papers/eye-movements-code-review.pdf)
+tracked gaze through review sessions;
+[GANDER](https://portal.research.lu.se/en/publications/gander-a-platform-for-exploration-of-gaze-driven-assistance-in-co)
+and [Gazing at Code Review(s)](https://portal.research.lu.se/en/projects/gazing-at-code-reviews/)
+build research platforms on top of it; [CodeGRITS](https://codegrits.github.io/CodeGRITS/)
+records IDE events and gaze together, and needs a Tobii to do it.
 
-"사람이 코드 리뷰에서 어디를 얼마나 보는가"는 이미 학계에서 측정된 적이 있는
-질문입니다. 다만 그 측정은 전용 eye-tracker를 전제로 했습니다.
-
-| 선행 사례 | 무엇을 측정하나 | Blindspot과의 차이 |
-| --- | --- | --- |
-| [Eye Movements in Code Review](https://andrewbegel.com/papers/eye-movements-code-review.pdf) | 리뷰 중 개발자의 시선 이동과 결함 발견 과정 | 가장 가까운 학술적 선행연구. 제품이 아니라 실험 |
-| [GANDER](https://portal.research.lu.se/en/publications/gander-a-platform-for-exploration-of-gaze-driven-assistance-in-co) / [Gazing at Code Reviews](https://portal.research.lu.se/en/projects/gazing-at-code-reviews/) | gaze 기반 리뷰 보조 기법 탐색 | eye-tracking 연구 플랫폼. 일상 개발 워크플로가 목표가 아님 |
-| [CodeGRITS](https://codegrits.github.io/CodeGRITS/) | IDE 행동 + 실제 시선(gaze) 동시 추적 | 연구 데이터 수집용이고 Tobii 등 **전용 하드웨어**가 필요 |
-| [The GitHub Gaze](https://digitalcommons.unl.edu/honorsembargoed/521/) | PR/이슈에서 개발자 시선이 어디 쏠리는지 | 플랫폼 UI 연구. diff 커버리지 도구가 아님 |
-| Flow Review Coverage | PR의 몇 %가 리뷰됐는지 | **댓글이 달린 hunk 비율**을 셀 뿐, 사람이 읽었는지는 보지 않음 |
-| [Vouch](https://marketplace.visualstudio.com/items?itemName=sanzhardanybayev.vouch-review-coverage) | 사람이 "reviewed"라고 **표시한** 범위 | 제품적으로 가장 가까움. 다만 자기신고(attestation)이고 행동 증거가 아님 |
-
-Vouch와의 차이가 이 프로젝트의 핵심입니다.
+The closest product is [Vouch](https://marketplace.visualstudio.com/items?itemName=sanzhardanybayev.vouch-review-coverage),
+which manages *human review coverage* — but by attestation:
 
 ```text
-Vouch
-"내가 이 코드를 검토했다고 표시했다"
-
-        ↓
-
-Blindspot
-"네가 실제로 이 코드를 읽은 행동적 증거가 있었는가?"
+Vouch      "I marked this code as reviewed."
+             ↓
+Blindspot  "Is there behavioural evidence that you read it?"
 ```
 
-그래서 이 프로젝트가 서 있는 자리는 이렇습니다.
+So the position is:
 
 ```text
-Eye-tracking 연구
+Eye-tracking research
         ↓
-코드 리뷰 중 개발자의 시선은 측정 가능하다
+Gaze during code review is measurable
         ↓
-그러나 전용 eye tracker는 일상 개발에 비현실적이다
+But dedicated eye trackers are impractical for everyday development
         ↓
-Blindspot은 IDE 상호작용 신호만으로 리뷰 주의를 근사한다
+Blindspot approximates review attention from IDE interaction signals
         ↓
-그 결과를 실행 가능한 diff 커버리지로 바꾼다
+And turns the result into actionable diff coverage
 ```
 
-**하드웨어는 쓰지 않습니다.** 카메라도, eye tracker도, 외부 전송도 없습니다.
-VS Code가 이미 알고 있는 것 — 어떤 줄이 화면에 있었고, 커서가 어디였고,
-뷰포트가 언제 멈췄는지 — 만으로 추정합니다.
+No hardware. No camera, no eye tracker, nothing leaves the machine.
 
-`visible / focused / dwell / caret / edited / revisit`라는 evidence model은
-그 자체가 대단한 발명이라기보다 **위 연구 가설을 하드웨어 없이 구현한 것**입니다.
+## What counts as "read"
 
-## "읽었다"의 정의
+This is the actual research question of the project, and the entire model is
+about 30 lines in [`src/core/evidence.ts`](src/core/evidence.ts). Six signals,
+weighted, with a threshold:
 
-이 프로젝트의 진짜 연구 질문이고, 모델 전체는
-[`src/core/evidence.ts`](src/core/evidence.ts)의 약 30줄이 전부입니다.
-여섯 개 신호에 가중치를 주고, 임계값을 둡니다.
-
-| 신호 | 의미 | 점수 |
+| signal | meaning | points |
 | --- | --- | --- |
-| visible | 화면에 300ms 이상 (줄의 읽기 비용에 비례해 조정) | 1 |
-| focused | 창이 포커스된 상태에서 활성 에디터에 800ms 이상 | 1 |
-| dwell | 그 줄이 화면에 있는 동안 뷰포트가 1초 이상 멈춤 | 1 |
-| caret | 커서를 올렸거나 선택했거나, **마우스가 그 줄 위에 멈췄음** | 1 |
-| edited | 그 줄에 직접 타이핑했음 | 2 |
-| revisit | 떠났다가 나중에 돌아와 다시 읽었음 | 1 |
+| visible | on screen for ≥ 300 ms, scaled by how much the line costs to read | 1 |
+| focused | on screen in the active editor, window focused, ≥ 800 ms | 1 |
+| dwell | the viewport held still for ≥ 1 s while the line was near your focus | 1 |
+| caret | you put the cursor on it, selected it, or **your mouse came to rest on it** | 1 |
+| edited | you typed on it | 2 |
+| revisit | you left it and came back to read it again | 1 |
 
-**3점이면 reviewed**입니다. 이 임계값은 프로젝트가 출발점으로 삼은 세 명제가
-문자 그대로 참이 되도록 고른 값이고, 그 명제들은
-[`test/evidence.test.ts`](test/evidence.test.ts)에 그대로 단언되어 있습니다.
-
-```
-스크롤로 지나감           →  1점   ≠ reviewed
-0.2초 동안 보임           →  0점   ≠ reviewed
-보임 + 멈춤 + 커서        →  3점   ≈ reviewed
-```
-
-창이 포커스를 잃은 동안, 뷰포트가 사람이 읽을 수 없는 속도(기본 45줄/초)로
-움직이는 동안, 2초보다 긴 tick 동안에는 아무것도 적립되지 않습니다.
-그렇지 않으면 노트북을 덮어 둔 한 시간이 성실한 독서 시간으로 보고됩니다.
-
-## eye tracker 없이 정확도를 올리는 방법
-
-뷰포트를 그대로 "읽은 기록"으로 취급하면 모델은 거짓말을 합니다.
-60줄이 떠 있는 에디터에서 커서 주변 10줄과 화면 맨 아래 줄이 같은 비율로
-읽혔을 리 없기 때문입니다. 그래서 세 가지를 명시적으로 모델링합니다
-([`src/core/attention.ts`](src/core/attention.ts)).
-
-### 1. Focal weighting — 주의는 국소적이다
-
-읽기의 perceptual span은 몇 줄 폭이고, 그 창은 **작업 중인 지점**에 붙어
-다닙니다. 그래서 한 tick의 크레딧을 뷰포트 전체에 균등 배분하지 않고,
-**초점에서 멀어질수록 감쇠**시켜 나눠 줍니다.
-
-초점은 커서입니다 — 에디터가 알려 주는, 가장 최근의 의도적 행동 위치.
-커서가 화면 밖으로 스크롤된 경우에만 뷰포트 중앙으로 대체합니다.
+A line is **reviewed** at 3 points. That threshold is chosen so the three
+propositions the project started from are literally true — and they are asserted
+as tests in [`test/evidence.test.ts`](test/evidence.test.ts):
 
 ```
-        커서
-         │
-  가중치 │  ────────────          full credit (±5줄)
-         │              ╲
-         │               ╲        선형 감쇠
-         │                ╲___    peripheral floor (0.2)
-         └──────────────────────  초점으로부터의 거리
-                        24줄
+scroll over line          →  1 pt   ≠ reviewed
+visible for 0.2 sec       →  0 pts  ≠ reviewed
+visible + pause + caret   →  3 pts  ≈ reviewed
 ```
 
-0이 아니라 바닥값(0.2)으로 수렴하는 것이 중요합니다. 화면에 있던 줄은
-읽혔을 가능성이 *어느 정도는* 있고, 0이라고 말하는 것도 1이라고 말하는 것만큼
-거짓입니다.
+Nothing is credited while the window is unfocused, while the viewport is moving
+faster than a human reads (45 lines/sec by default), or across any tick longer
+than two seconds — otherwise a closed laptop would report an hour of diligent
+reading.
 
-멈춤(dwell)도 같은 원리로 초점 근방에만 적립됩니다. 뷰포트가 멈췄다는 건
-당신이 **어딘가에서** 멈췄다는 증거이지, **모든 곳에서** 멈췄다는 증거가 아닙니다.
+See [`docs/RESEARCH.md`](docs/RESEARCH.md) for what this definition gets wrong
+and how to find out.
 
-### 2. 줄마다 읽기 비용이 다르다
+## Getting closer without an eye tracker
 
-읽기 연구에서 fixation 수는 줄 수가 아니라 **토큰 수**를 따라갑니다.
-고정된 300ms 임계값은 `}`에는 과하게 후하고, 140자짜리 표현식에는 부당하게
-박합니다. 그래서 식별자 런과 연산자로 토큰 수를 추정해 시간 임계값을
-비례 조정합니다.
+Treating a viewport as a reading record is the model's biggest lie: the ten
+lines around your caret and the bottom of a 60-line editor cannot have been
+read at the same rate. Three corrections, all in
+[`src/core/attention.ts`](src/core/attention.ts), all switchable so the
+difference stays measurable rather than asserted:
 
-```ts
-readCost('}')                                        // 0.35 → 105ms면 충분
-readCost('const x = 1;')                             // 0.75
-readCost('const totals = rows.reduce((a, r) => …);') // 1.4  → 420ms 필요
-```
+**Focal weighting.** The perceptual span in reading is a few lines wide and it
+follows the point of work, so a tick's credit decays with distance from the
+caret (the viewport centre when the caret is scrolled away) instead of being
+broadcast flat. It decays to a floor, not to zero — a line on screen had *some*
+chance of being read, and saying zero is as much a lie as saying one. Dwell is
+credited the same way: a stationary viewport is evidence you stopped
+*somewhere*, not everywhere.
 
-### 3. 다시 읽은 것은 강한 이해 신호다
+**Per-line read cost.** Fixation counts track token count, not line count, so
+one 300 ms threshold over-credits `}` and under-credits a 140-character
+expression. Tokens are estimated from identifier runs plus operators, and the
+time thresholds scale with the result.
 
-코드 읽기 연구에서 **regression(되돌아 읽기)** 은 이해 과정과 가장 강하게
-연결되는 행동 중 하나입니다. 어떤 줄을 20초 이상 떠났다가 다시 보면
-새로운 viewing episode로 세고, revisit 신호를 줍니다.
+**Re-reading.** Regression is one of the strongest comprehension signals in the
+code-reading literature. Returning to a line after 20 s counts as a new viewing
+episode — but only earns its point on top of real focused time, or a file left
+open in a background split would earn re-reading credit for being scrolled past
+twice.
 
-단, revisit은 **focused 시간이 있을 때만** 점수가 됩니다. 그렇지 않으면
-백그라운드 split에 열어 둔 파일을 두 번 스크롤한 것이 재독 크레딧이 됩니다.
+**The mouse as a second gaze sensor.** Approximating focus with the caret alone
+misses the most common way code gets read: caret parked at the top, scrolling
+and pointing with the mouse. All the credit lands near the caret and the lines
+actually read stay blindspots. VS Code does not expose the pointer, but it
+calls hover providers when the pointer stops over a token — the one place the
+API lets slip where the mouse is, and mouse-gaze correlation is a long-measured
+fact in HCI. So a hover request does two things: whichever of caret and mouse
+moved *more recently* becomes the focus of the attention budget (a scroll
+invalidates it, since the text under a still mouse has moved), and it counts as
+the same *navigated* signal a caret placement does, reported apart in the hover
+explanation as `1× caret, 2× mouse`. With `editor.hover.enabled` off the sensor
+is simply absent and the caret model is what remains.
 
-### 4. 마우스는 두 번째 시선 센서다
+**Saying how much to trust the number.** Of the lines called reviewed, the ones
+the reader touched — caret, mouse, keystrokes — are counted apart from the ones
+that passed on screen time alone, and the pace is reported too: attention is a
+conserved budget of `attentionLines` line-seconds per second, so the focused
+time credited to the target lines divided by that throughput recovers roughly
+the time spent. Past the 300–500 lines an hour at which review studies see
+defect detection collapse, the pace is flagged `fast` — meaning distrust the
+coverage next to it. Deleted lines are still never scored, but every file now
+shows its `−12 deleted`, because a quietly removed null check is where the bug
+is.
 
-초점을 커서로만 근사하면, 커서를 파일 맨 위에 두고 **마우스 휠과 포인터로**
-읽는 가장 흔한 읽기 방식이 통째로 빠집니다. 크레딧은 전부 커서 근처로 가고,
-실제로 읽은 줄은 blindspot으로 남습니다.
+[`test/attention.test.ts`](test/attention.test.ts) and
+[`test/tracker.test.ts`](test/tracker.test.ts) replay the same sessions through
+both models and assert where they disagree.
 
-VS Code는 마우스 위치를 알려 주지 않지만, 포인터가 토큰 위에 멈추면 hover
-provider를 호출합니다. 그 호출이 "마우스가 이 줄에 있었다"는 유일한 관측이고,
-마우스 위치와 시선의 상관관계는 HCI에서 오래 측정된 사실입니다. 그래서 hover
-요청은 두 가지로 쓰입니다.
+### You have to be able to ask why
 
-- **초점 선택** — 커서와 마우스 중 *더 최근에* 움직인 쪽이 attention budget의
-  초점이 됩니다. 스크롤하면 마우스 아래의 텍스트가 바뀌므로 그 순간 무효화됩니다.
-- **navigated 신호** — 커서를 올린 것과 같은 행위를 다른 센서로 본 것이므로
-  같은 점수를 받습니다. hover 설명에는 `1× caret, 2× mouse`처럼 따로 나옵니다.
-
-`editor.hover.enabled`를 끈 사용자에게는 이 센서가 없고, 그러면 예전처럼
-커서만으로 돌아갑니다. 없다고 틀리지는 않고, 있으면 정확해집니다.
-
-### 5. 숫자를 얼마나 믿어도 되는지 같이 보여준다
-
-같은 "116줄 읽음"이라도 커서·마우스·타이핑이 닿은 줄과 화면 시간만으로 통과한
-줄은 신뢰도가 다릅니다. 그래서 보고서는 reviewed 줄 중 **interacted** 줄 수를
-따로 셉니다. 그리고 읽은 속도도 냅니다.
-
-```
-Read      64    116/182 lines, 71 interacted with
-Focus     41    5m 12s of attention
-Activity  80    19 actions
-Pace            ≈ 22 lines/min   faster than reviewers catch defects at
-```
-
-attention은 초당 `attentionLines`줄어치로 보존되는 예산이므로, 대상 줄에 적립된
-focused 시간을 그 처리량으로 나누면 실제로 쓴 시간이 대략 복원됩니다. 리뷰 연구가
-결함 발견율이 급락한다고 보는 시간당 300–500줄을 넘으면 `fast`로 표시됩니다 —
-그 커버리지 숫자는 믿지 말라는 뜻입니다.
-
-삭제된 줄은 여전히 점수에 들어가지 않지만, 이제 파일마다 `−12 deleted`로
-**보입니다**. 조용히 지워진 null 체크가 버그가 되는 곳이니까요.
-
-### 이 모델은 껐다 켤 수 있습니다
-
-`focalModel`, `contentScaling`을 끄면 예전의 평평한 뷰포트 모델로 돌아갑니다.
-차이가 **주장**이 아니라 **측정 가능**해야 하기 때문에 남겨 둔 스위치입니다.
-[`test/attention.test.ts`](test/attention.test.ts)에는 같은 세션을 두 모델로
-재생해 결과가 갈리는 케이스가 단언으로 들어 있습니다.
-
-### 왜 안 읽었다고 하는지 물어볼 수 있어야 한다
-
-반박할 수 없는 커버리지 숫자는 아무도 믿지 않습니다. 안 읽은 줄에 마우스를
-올리면 그 줄이 실제로 얻은 신호와 못 얻은 신호가 그대로 나옵니다.
+A coverage number nobody can interrogate is a number nobody believes. Hovering
+an unread line shows exactly which signals it earned and which it did not:
 
 ```
 blindspot — 2/3 pts
@@ -240,55 +184,54 @@ blindspot — 2/3 pts
 · read time 5.0s of 2.0s (100%)
 ```
 
-"나 이거 읽었는데"와 모델의 판단이 갈릴 때, 그 자리에서 어느 쪽이 맞는지
-확인할 수 있어야 모델을 고칠 수도 있습니다. `blindspot.explainOnHover`.
+When "but I did read that" collides with the model's verdict, this is where it
+gets settled — and where the model gets corrected. `blindspot.explainOnHover`.
 
-## 두 가지 모드: Diff / Reading
+## Two modes: Diff and Reading
 
-같은 엔진, 같은 보고서, 대상만 다릅니다. 상태 표시줄, `Blindspot: Switch Mode`,
-`Blindspot: Toggle Diff / Reading Mode`에서 바꿉니다.
+One engine, one report; only the target differs. Switch from the status bar,
+`Blindspot: Switch Mode`, or `Blindspot: Toggle Diff / Reading Mode`.
 
 | | Diff | Reading |
 | --- | --- | --- |
-| 대상 | 내가 바꾼 줄 — 마지막으로 완료한 리뷰 이후, 없으면 `baseRef`(HEAD) 이후 | 이 폴더에서 연 모든 파일의 모든 줄 |
-| 헤드라인 | **36% unread** — 아직 답하지 않은 질문 | **62% read** — 진척 |
-| 거터 마커 | 주황(위험하면 빨강) | 파랑 |
-| Review Score | 있음 | 없음 (새 코드도 위험도 가중도 의미가 없음) |
-| 필요한 것 | git | 폴더 |
+| target | the lines you changed — since the last completed review, else since `baseRef` (HEAD) | every line of every file you have opened in this folder |
+| headline | **36% unread** — a question still open | **62% read** — progress |
+| gutter | orange, red where risky | blue |
+| Review Score | yes | no — new-code and risk weighting mean nothing for a codebase |
+| needs | git | a folder |
 
-Diff 모드에서 무엇을 기준으로 잴지는 `Blindspot: Choose What the Diff Is Measured
-Against`로 고릅니다 — 마지막 완료 리뷰, `baseRef`, 또는 아무 ref나. `Complete Review`는 기준을 HEAD로 옮깁니다.
+In diff mode `Blindspot: Choose What the Diff Is Measured Against` picks the
+base: the last completed review, `baseRef`, or any ref. `Complete Review` moves the baseline
+to HEAD.
 
-모드가 Reading이어도 **커밋 직전 경고는 항상 diff를 잽니다.** 코드를 읽는 중이었다는
-이유로 커밋 경고가 조용히 꺼지는 것이 이 스위치의 유일한 위험이었고, 그래서
-스테이징 순간에는 diff 보고서를 따로 계산합니다.
+**The commit-time warning always measures the diff**, whatever mode the panel
+is in. A reading session silently switching that warning off was the one real
+risk of having a switch at all, so staging computes a diff report of its own.
 
-사이드바(Source Control 뷰 아래 **Blindspot**)에는 안 읽은 파일이 위험도 순으로,
-그 아래 정확한 줄 범위가 트리로 놓입니다. 클릭하면 그 줄로 갑니다.
+The sidebar (**Blindspot**, under Source Control) lists files with unread code,
+worst first, with the exact ranges beneath each; clicking one goes there.
 
-### 정의를 움직여 볼 수 있습니다
+### Moving the definition
 
-보고서 패널은 [`demo/index.html`](demo/index.html)과 같은 페이지이고, 다른 점은
-데이터가 지금 이 세션의 증거라는 것뿐입니다. 슬라이더로 "읽었다"의 임계 점수를
-바꾸면 커버리지, 파일 랭킹, Review Score가 브라우저 안에서 다시 계산됩니다 —
-확장이 기록한 것과 동일한 per-line 신호에서요. 저장은 되지 않습니다. 정의를
-바꾸려면 `blindspot.reviewThresholdPoints` 설정이나 팀 전체 정의인
-`.blindspot/config.json`을 고치세요.
+The report panel is the same page as [`demo/index.html`](demo/index.html); the
+only difference is that its data is this session's evidence. Drag the slider to
+change the point threshold for "read", and coverage, the file ranking and the
+Review Score are recomputed in the browser — from the same per-line signals the
+extension records. Nothing is saved: to change the definition, set
+`blindspot.reviewThresholdPoints`, or edit the team-wide `.blindspot/config.json`.
 
-## 퍼센트만으로는 아무 의미가 없다
+## Percentage alone is useless
 
-"36% 안 읽음"은 그 자체로는 아무것도 뜻하지 않습니다.
-README 40줄을 안 읽은 건 괜찮고, `auth/session.ts` 3줄을 안 읽은 건 안 괜찮습니다.
+36% unread means nothing on its own. Forty unread lines of README are fine;
+three unread lines in `auth/session.ts` are not. So every changed line is also
+classified by risk — from its path (`auth/`, `billing/`, `migrations/`,
+`.github/workflows/`) and from its content (`eval(`, `process.env`, string-built
+SQL, `innerHTML`) — and the report is ranked by risk first, volume second.
 
-그래서 모든 변경 줄은 위험도로도 분류됩니다 — 경로(`auth/`, `billing/`,
-`migrations/`, `.github/workflows/`)와 내용(`eval(`, `process.env`, 문자열로
-조립한 SQL, `innerHTML`) 양쪽에서. 그리고 보고서는 **위험도 우선, 분량은 그
-다음**으로 정렬됩니다.
+A comment inside a critical file is demoted one rank: you cannot ship an auth
+bug in a comment.
 
-critical 파일 안의 주석은 한 단계 강등됩니다. 주석에 auth 버그를 실어 보낼 수는
-없으니까요.
-
-종합 **Review Score**는 커버리지를 "무엇에 대한 커버리지였는지"로 가중한 값입니다.
+The composite **Review Score** is coverage weighted by what the coverage was *of*:
 
 ```
 Review Score
@@ -296,95 +239,99 @@ Review Score
 █████░░░░░ 49
 
 Coverage       64%
-Critical       24%     ← 점수가 64가 아니라 49인 이유
+Critical       24%     ← this is why the score is 49 and not 64
 New code       64%
 AI-generated   48%
 ```
 
-측정할 대상이 없는 항목은 빠지고 가중치는 나머지에 재분배됩니다.
-critical 코드를 건드리지 않은 diff가 그 이유로 벌점을 받지는 않습니다.
+Components with nothing to measure are dropped and their weight is redistributed,
+so a diff that touches no critical code is not punished for having none.
 
-## AI 코드는 '제품'이 아니라 '버킷'이다
+## AI code is a bucket, not the product
 
-AI가 생성한 코드만 추적하면 더 나쁜 도구가 됩니다. 문제는 **누가 썼든 아무도
-읽지 않은 코드**니까요. 모든 변경 줄이 측정되고, 기계 저작 여부는 커버리지를
-*대체*하는 게 아니라 *나란히* 보고됩니다.
+Tracking only AI-generated code would make this a worse tool: the problem is
+unreviewed code, whoever produced it. Every changed line is measured. Machine
+authorship is reported *alongside* coverage, not instead of it.
 
-provenance는 모델에 대한 추측이 아니라 실제로 관측된 것만 기록합니다.
+Provenance records what was actually observed, never a guess about a model:
 
-- `typed` — 사람 키 입력으로 쌓인 줄
-- `bulk` — 한 번의 기계 속도 삽입으로 들어온 줄 (에이전트, 붙여넣기, codemod)
-- `declared-ai` — 도구가 `.blindspot/ai-regions.json`으로 명시적으로 선언한 줄
-- `unknown` — 추적 이전부터 있던 줄
+- `typed` — built up by human keystrokes
+- `bulk` — arrived in one machine-speed insertion (an agent, a paste, a codemod)
+- `declared-ai` — a tool explicitly claimed it via `.blindspot/ai-regions.json`
+- `unknown` — predates tracking
 
-## 설치
+## Install
 
-쓰려는 경우 — `.vsix`를 만들어 설치합니다.
+From [Open VSX](https://open-vsx.org/extension/rladnwls122/blindspot) — which is
+where VSCodium, Cursor, Windsurf and Gitpod get their extensions. In VS Code
+itself, build a `.vsix` and install that:
 
 ```bash
 npm install
-npm run package                              # blindspot-0.3.1.vsix 생성
-code --install-extension blindspot-0.3.1.vsix
+npm run package                              # produces blindspot-0.3.2.vsix
+code --install-extension blindspot-0.3.2.vsix
 ```
 
-git 저장소가 열려 있으면 바로 상태 표시줄과 Activity Bar의 Blindspot 뷰에
-커버리지가 뜹니다. 저장소가 아닌 폴더에서도 명령은 등록되며, 무엇이 없는지 알려
-줍니다.
+Open a git repository and coverage appears in the status bar, and in the
+Blindspot view in the Activity Bar. Outside one the commands still register and
+tell you what is missing. Every folder of a multi-root workspace is tracked
+separately; the status bar and the sidebar follow the one you are reading in.
 
-개발하려는 경우:
+To work on it:
 
 ```bash
 npm install
 npm run build
-npm test           # 221개 테스트 (모델, CLI, 실제 git 저장소, 그리고 확장 자체)
-npm run demo       # 스크립트 세션을 실제 모델로 재생
-npm run demo:page  # demo/index.html 재생성 — 인터랙티브 버전
-npm run icon       # media/icon.png 재생성
+npm test           # 229 tests: the model, the CLI, a real git repo, the extension
+npm run demo       # replay a scripted session through the real model
+npm run demo:page  # regenerate demo/index.html — the interactive version
+npm run icon       # regenerate media/icon.png
 ```
 
-확장을 디버그하려면 이 폴더를 VS Code로 열고 <kbd>F5</kbd>를 누르세요.
+To debug the extension: open this folder in VS Code and press <kbd>F5</kbd>.
 
-[`demo/index.html`](demo/index.html)은 같은 보고서에 임계값 슬라이더를 붙인
-것입니다. 슬라이더를 움직이면 커버리지, 파일 랭킹, Review Score가 전부
-확장이 기록하는 것과 동일한 per-line 신호에서 다시 계산됩니다.
-`media/page.html`에서 생성되므로 그 안의 숫자가 모델과 어긋날 수 없습니다.
+[`demo/index.html`](demo/index.html) is the same report with the threshold made
+adjustable: move the slider and every number on the page — coverage, the file
+ranking, the Review Score — recomputes from the same per-line signals the
+extension records. It is generated from `media/page.html`, so the
+numbers in it can never drift from the model.
 
-### 명령
+### Commands
 
-| 명령 | 하는 일 |
+| command | what it does |
 | --- | --- |
-| `Blindspot: Show Review Report` | 위의 패널 |
-| `Blindspot: Switch Mode (Diff / Reading)` | 무엇을 잴지 |
-| `Blindspot: Choose What the Diff Is Measured Against` | 마지막 리뷰 / `baseRef` / 임의의 ref |
-| `Blindspot: Review Blindspot` | 안 읽은 hunk로 점프, 위험도 높은 순 |
-| `Blindspot: Mark File As Reviewed` | "이건 GitHub UI에서 읽었다" (사이드바에서도) |
-| `Blindspot: Complete Review` | 기준을 HEAD로 — 여기까지는 봤다 |
-| `Blindspot: Install pre-commit Hook` | 커밋 시점에 카드 출력 |
-| `Blindspot: Toggle Unread Line Markers` | 거터 마커 |
-| `Blindspot: Reset Review Evidence` | 처음부터 다시 |
+| `Blindspot: Show Review Report` | the panel above |
+| `Blindspot: Switch Mode (Diff / Reading)` | what to measure |
+| `Blindspot: Choose What the Diff Is Measured Against` | last review / `baseRef` / any ref |
+| `Blindspot: Review Blindspot` | jump to the next unread hunk, worst risk first |
+| `Blindspot: Mark File As Reviewed` | "I read this in the GitHub UI" (also from the sidebar) |
+| `Blindspot: Complete Review` | baseline to HEAD — reviewed up to here |
+| `Blindspot: Install pre-commit Hook` | print the card at commit time |
+| `Blindspot: Toggle Unread Line Markers` | gutter markers |
+| `Blindspot: Reset Review Evidence` | start over |
 
 ### CLI
 
 ```bash
-blindspot check --staged            # 지금 커밋하려는 것에 대한 카드 출력
-blindspot report                    # 파일별 표 + Read/Focus/Activity/Pace
-blindspot read                      # Reading 모드가 보는 것 — 연 파일 전체. git 불필요
-blindspot check --min-coverage 70   # 70% 미만이면 exit 1 (CI나 엄격한 훅용)
-blindspot check --json              # 기계가 읽는 형식
-blindspot --version                 # 버전
+blindspot check --staged            # print the card for what you are about to commit
+blindspot report                    # per-file table plus Read / Focus / Activity / Pace
+blindspot read                      # what Reading mode sees: opened files, whole. No git needed
+blindspot check --min-coverage 70   # exit 1 below 70% (for CI or a strict hook)
+blindspot check --json              # machine-readable
+blindspot --version                 # the version
 ```
 
-설치되는 pre-commit 훅은 기본적으로 **경고하고 exit 0** 합니다. 커밋을 막는
-리뷰 도구는 일주일 안에 제거되고, 참인 사실을 알려 주는 도구는 남습니다.
-강제는 `--min-coverage` / `--max-critical`로 옵트인입니다.
+The installed pre-commit hook **warns and exits 0** by default. A review tool
+that blocks commits gets uninstalled within a week; one that tells you something
+true gets kept. Enforcement is opt-in via `--min-coverage` / `--max-critical`.
 
-## 설정
+## Configuration
 
-에디터 설정은 `blindspot.*` 아래에 있습니다. `blindspot.mode`(`auto` / `diff` /
-`reading`)와 `blindspot.diffSince`(`lastReview` / `baseRef`)는 패널과 명령이 대신
-써 주는 값이고, 나머지는 측정 모델의 손잡이입니다. 프로젝트 전체 규칙 — *이*
-코드베이스에서 무엇이 위험한가 — 은 커밋되는 `.blindspot/config.json`에 두어 팀이
-하나의 정의를 공유합니다.
+Editor settings live under `blindspot.*`. `blindspot.mode` (`auto` / `diff` /
+`reading`) and `blindspot.diffSince` (`lastReview` / `baseRef`) are written for
+you by the panel and the commands; the rest are the model's knobs. Project-wide
+rules — what counts as risky in *this* codebase — go in a committed
+`.blindspot/config.json`, so a team shares one definition:
 
 ```json
 {
@@ -403,74 +350,66 @@ blindspot --version                 # 버전
 }
 ```
 
-## 데이터가 사는 곳
+## Where the data lives
 
-`.git/blindspot/state.json` — 폴더가 git 저장소일 때. git 디렉터리 안이라
-clone마다 따로 있고, 실수로 커밋될 수 없고, clone과 함께 지워집니다. git 없이
-연 폴더는 상태를 숨길 `.git`이 없으므로 대신 `~/.blindspot/<폴더 경로 해시>/
-state.json`에 저장되며, 30일간 사용이 없으면 자동으로 정리되지만 폴더 자체를
-지워도 함께 지워지지는 않습니다. 리뷰 주의 기록은 **당신에 대한 개인
-텔레메트리**입니다. 공유 브랜치로 새어 나가면 안 되고, 기기 밖으로 나가서도 안
-되며 — 두 경우 모두 실제로 그렇습니다.
+`.git/blindspot/state.json` when the folder is a git repository — inside the
+git directory, so it is per-clone, never committed by accident, and deleted
+with the clone. A folder opened without git has no `.git` to hide state in, so
+its state lives instead under `~/.blindspot/<hash-of-the-folder-path>/
+state.json`, pruned automatically after 30 days of inactivity but not deleted
+when the folder itself is deleted. Review attention is personal telemetry
+about *you*; it must never end up in a shared branch or leave your machine —
+and in both cases, nothing does.
 
-증거는 줄 번호가 아니라 **줄 내용의 해시**에 붙습니다. 읽은 줄 위에 import 하나를
-끼워 넣어도 그 크레딧이 안 읽은 줄로 넘어가지 않습니다. 들여쓰기를 바꾸면 증거가
-유지되고, 토큰을 바꾸면 사라집니다.
+Evidence is stored against a hash of each line's content, not its line number,
+so inserting an import above a line you read does not hand that credit to a line
+you didn't. Reindenting a line keeps its evidence; changing a token does not.
 
-## 아키텍처
+## Architecture
 
 ```
-src/core/        모델 — vscode를 import하지 않음, 전부 유닛 테스트됨
-  attention.ts     focal weighting, 읽기 비용, 재독 — eye tracker의 대역
-  evidence.ts      여섯 신호 → 점수 → reviewed
-  risk.ts          경로 + 내용 → 위험도
-  ledger.ts        편집과 재로드를 가로지르는 줄 정체성
-  coverage.ts      diff × 증거 → 보고서 (interacted, pace, 삭제 줄 포함)
-  score.ts         종합 점수
-  labels.ts        패널·상태바·사이드바·CLI가 같은 말을 쓰게 하는 문구
-  tree.ts          사이드바를 데이터로 — vscode 없이 테스트됨
-src/extension/   에디터 접착부 (tracker, panel, tree, decorations, git)
-src/cli/         `blindspot` — 훅과 CI 진입점
-demo/            스크립트 세션을 실제 모델로 재생
+src/core/        the model — no vscode import, fully unit-tested
+  attention.ts     focal weighting, read cost, re-reading — the eye tracker's stand-in
+  evidence.ts      six signals → points → reviewed
+  risk.ts          path + content → risk level
+  ledger.ts        line identity across edits and reloads
+  coverage.ts      diff × evidence → report (with interacted lines, pace, deletions)
+  score.ts         the composite
+  labels.ts        the words the panel, status bar, sidebar and CLI share
+  tree.ts          the sidebar as data — tested without vscode
+src/extension/   the editor glue (tracker, panel, tree, decorations, git)
+src/cli/         `blindspot` — the hook and CI entry point
+demo/            replay a scripted session through the real model
 ```
 
-`core` 경계는 의도적입니다. "읽었다"의 정의는 에디터 없이도 재조정하고 재생할 수
-있어야 하고, 그렇지 않으면 검증 자체가 불가능합니다.
+The `core` boundary is deliberate: the definition of "read" has to be
+retunable and replayable without an editor attached, or it can never be
+validated.
 
-## 알려진 한계
+## Known limits
 
-- 초점은 커서와 마우스로 근사합니다. 둘 다 두고 눈만 다른 곳을 읽는 경우는
-  잡지 못합니다. 이것이 eye tracker 없이 남는 가장 큰 오차원이고, 마우스 센서는
-  `editor.hover`가 켜져 있을 때만 있습니다.
-- 터미널이나 패널에 포커스가 있어도 VS Code는 마지막 에디터를 활성으로 보고합니다.
-  그 시간은 `idleAfterMs`(30초)까지 커서 근처 몇 줄에 적립될 수 있습니다.
-- 읽기 비용은 토큰 수 추정이지 이해 난이도가 아닙니다. 짧고 어려운 줄은
-  과소평가됩니다.
-- 화면 밖 리뷰(GitHub UI, 종이 출력, 페어 리뷰)는 관측되지 않습니다.
-  그래서 `Mark Current File As Reviewed`가 있습니다.
-- 모든 오차는 **"덜 읽었다고 말하는 쪽"** 으로 기울어 있습니다. 다시 읽으라고
-  말하는 실수가, 읽었다고 말해 주는 실수보다 낫습니다.
+- Focus is approximated by the caret and the mouse. Reading somewhere neither
+  of them is remains the largest error term, the one an eye tracker would
+  close; and the mouse sensor exists only while `editor.hover` is enabled.
+- With focus in the terminal or a panel, VS Code still reports the last editor
+  as active. That time can accrue to the few lines around the caret until
+  `idleAfterMs` (30 s) runs out.
+- Read cost estimates tokens, not difficulty. Short hard lines are undervalued.
+- Review that happens off screen (the GitHub UI, a pair session) is invisible,
+  which is what `Mark Current File As Reviewed` exists for.
+- Every error leans toward *under*-reporting coverage. Being told to read
+  something twice is a better failure than being told you read it.
 
-무엇이 아직 틀렸고 어떻게 확인할지는 [`docs/RESEARCH.md`](docs/RESEARCH.md)에
-있습니다.
+## Status
 
-## 상태
-
-v0.3.1 이후 미출시 — 두 모드, 인터랙티브 페이지 패널과 사이드바, 마우스 센서,
-interacted/pace가 `main`에 들어가 있습니다. 무엇이 바뀌었는지는
-[`CHANGELOG.md`](CHANGELOG.md)에, 무엇을 더 재고 무엇을 더 만들지 따져 본 기록은
-[`docs/BRAINSTORM.md`](docs/BRAINSTORM.md)에 있습니다. 다음 계획은
-[`docs/PLAN.md`](docs/PLAN.md), 아직 열려 있는 결정은
-[`docs/QUESTIONS.md`](docs/QUESTIONS.md)를 보세요.
-
-## 참고 문헌
-
-- Begel et al., [*Eye Movements in Code Review*](https://andrewbegel.com/papers/eye-movements-code-review.pdf)
-- [GANDER: A Platform for Exploration of Gaze-Driven Assistance in Code Review](https://portal.research.lu.se/en/publications/gander-a-platform-for-exploration-of-gaze-driven-assistance-in-co) (Lund University)
-- [Gazing at Code Review(s)](https://portal.research.lu.se/en/projects/gazing-at-code-reviews/) (Lund University)
-- [CodeGRITS](https://codegrits.github.io/CodeGRITS/) — [github.com/codegrits/CodeGRITS](https://github.com/codegrits/CodeGRITS)
-- Rasgorshek, [*The GitHub Gaze*](https://digitalcommons.unl.edu/honorsembargoed/521/)
-- [Vouch — Review Coverage](https://marketplace.visualstudio.com/items?itemName=sanzhardanybayev.vouch-review-coverage)
+v0.3.2 — the two modes, the interactive page as the panel, the sidebar, the
+mouse sensor, interacted lines and pace are on `main`. Every folder of a
+multi-root workspace is tracked as of this version; before it, only the first
+one was.
+See [`CHANGELOG.md`](CHANGELOG.md) for what changed and
+[`docs/BRAINSTORM.md`](docs/BRAINSTORM.md) (Korean) for the reasoning about
+what else to measure and build. See [`docs/PLAN.md`](docs/PLAN.md) for what is
+next and [`docs/QUESTIONS.md`](docs/QUESTIONS.md) for the decisions still open.
 
 ## License
 
