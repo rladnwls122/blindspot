@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import Module from 'node:module';
 import * as path from 'node:path';
 import { emptyActivity, type DiffReport } from '../src/core/types';
-import { computeMetrics, type PageData } from '../src/core/coverage';
+import { computeMetrics, pageData, type PageData } from '../src/core/coverage';
 import { DEFAULT_CONFIG } from '../src/core/config';
 
 /**
@@ -71,6 +71,8 @@ function view(file = HOSTILE) {
     weights: DEFAULT_CONFIG.weights,
     threshold: DEFAULT_CONFIG.reviewThresholdPoints,
     riskWeights: DEFAULT_CONFIG.riskWeights,
+    settings: pageData([], { getText: () => undefined, getEvidence: () => undefined }, DEFAULT_CONFIG)
+      .settings,
     files: [
       {
         path: file,

@@ -113,7 +113,6 @@ h3 {
   letter-spacing: -0.006em;
 }
 p { margin: 0; }
-.lede { font-size: 1.12rem; color: var(--muted); line-height: 1.6; }
 .note { font-size: 0.875rem; color: var(--muted); line-height: 1.6; }
 .eyebrow {
   font-family: var(--mono);
@@ -140,15 +139,6 @@ header {
   gap: 24px;
   max-width: 720px;
 }
-.blame {
-  font-family: var(--serif);
-  font-size: clamp(1.05rem, 2.4vw, 1.35rem);
-  line-height: 1.5;
-  color: var(--muted);
-  max-width: 30ch;
-}
-.blame s { text-decoration: none; color: var(--faint); }
-.blame b { color: var(--ink); font-weight: 500; }
 
 /* ---------------------------------------------------------------- panels */
 
@@ -259,6 +249,10 @@ input[type="range"]::-moz-range-thumb {
   width: 3rem; color: var(--muted);
 }
 .signals .desc { color: var(--muted); font-size: 0.87rem; }
+.signals.kv td:first-child { width: 45%; }
+.signals.kv td:last-child {
+  text-align: left; font-family: var(--mono); font-size: 0.8rem; width: auto;
+}
 
 .ineq { display: flex; flex-direction: column; gap: 0; }
 .ineq-row {
@@ -321,28 +315,24 @@ input[type="range"]::-moz-range-thumb {
   letter-spacing: 0.1em; text-transform: uppercase; color: var(--faint); padding-bottom: 8px;
 }
 .files th.num, .files td.num { text-align: right; font-variant-numeric: tabular-nums; }
-.files td { padding: 9px 0; border-top: 1px solid var(--rule); }
+.files th, .files td { padding-right: 20px; }
+.files th:last-child, .files td:last-child { padding-right: 0; }
+.files td { padding-top: 9px; padding-bottom: 9px; border-top: 1px solid var(--rule); }
 .files td.path { font-family: var(--mono); font-size: 0.8rem; }
 .files td.num { font-family: var(--mono); font-size: 0.82rem; }
 .files .sev { border-left: 2px solid var(--danger); padding-left: 10px; }
 .files .cov-bad { color: var(--ember); }
 .files .cov-ok { color: var(--read); }
-.rank { display: flex; flex-direction: column; gap: 14px; }
-.toggle { display: flex; gap: 0; border: 1px solid var(--rule); border-radius: 3px; width: fit-content; overflow: hidden; }
-.toggle button {
-  font-family: var(--mono); font-size: 0.74rem; padding: 7px 13px;
-  border: 0; background: transparent; color: var(--muted); cursor: pointer;
-}
-.toggle button[aria-pressed="true"] { background: var(--ink); color: var(--surface); }
 
 /* ---------------------------------------------------------------- score */
 
-.score-head { display: flex; align-items: baseline; gap: 16px; }
+.score-head { display: flex; align-items: center; gap: 16px; }
 .score-head b {
   font-family: var(--mono); font-size: 3.2rem; line-height: 1; font-weight: 400;
   font-variant-numeric: tabular-nums; letter-spacing: -0.03em;
 }
-.score-bar { font-family: var(--mono); font-size: 1.1rem; letter-spacing: -0.08em; color: var(--ember); }
+.score-track { flex: 1; height: 6px; background: var(--sunk); border-radius: 3px; overflow: hidden; }
+.score-bar { display: block; height: 100%; background: var(--ember); transition: width .28s cubic-bezier(.4,0,.2,1); }
 .metrics { display: flex; flex-direction: column; }
 .metric {
   display: grid; grid-template-columns: 8rem minmax(0,1fr) 3rem;
@@ -358,33 +348,6 @@ input[type="range"]::-moz-range-thumb {
   text-align: right; font-family: var(--mono); font-size: 0.87rem; font-variant-numeric: tabular-nums;
 }
 
-/* ---------------------------------------------------------------- q&a */
-
-.qa { display: flex; flex-direction: column; }
-.q { border-top: 1px solid var(--rule); padding: 18px 0; display: flex; flex-direction: column; gap: 7px; }
-.q:last-child { border-bottom: 1px solid var(--rule); }
-.q .k {
-  font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.1em;
-  color: var(--faint); text-transform: uppercase;
-}
-.q h3 { font-size: 1rem; font-weight: 500; }
-.q p { font-size: 0.9rem; color: var(--muted); }
-.q .default {
-  font-size: 0.82rem; color: var(--muted); font-family: var(--mono);
-  border-left: 2px solid var(--rule); padding-left: 10px;
-}
-.q.act .k { color: var(--ember); }
-.q.act .default { border-left-color: var(--ember); color: var(--ink); }
-
-footer {
-  border-top: 1px solid var(--rule); padding-top: 26px;
-  display: flex; flex-direction: column; gap: 12px;
-}
-.shell {
-  font-family: var(--mono); font-size: 0.8rem; background: var(--sunk);
-  border-radius: 3px; padding: 14px 16px; overflow-x: auto; line-height: 1.8;
-}
-.shell .c { color: var(--faint); }
 
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
@@ -394,21 +357,11 @@ footer {
 <div class="page">
 
 <header>
-  <div class="eyebrow">VS Code extension</div>
+  <div class="eyebrow" id="head-scope">review report</div>
   <h1>Blindspot</h1>
-  <p class="blame">
-    <s>git blame</s> tells you <b>who wrote it</b>.<br>
-    Blindspot tells you <b>who read it</b>.
-  </p>
-  <p class="lede">
-    Code is now produced faster than anyone can read it, and the one thing nobody
-    measures is how much of it a person actually looked at. We measure how much of
-    the code the <em>tests</em> touched and none of how much a <em>person</em> did.
-    This is that number, taken from the session you just had, before you commit.
-  </p>
 </header>
 
-<!-- ============================================================ the card -->
+<!-- ============================================================== the count -->
 <section>
   <div class="split">
     <div class="panel card">
@@ -437,115 +390,25 @@ footer {
       <div class="cta">Review Blindspot</div>
     </div>
 
-    <div class="col">
-      <h2>Every number here comes from one definition</h2>
-      <p class="note">
-        Nothing on this page is hardcoded. Every value is the scoring model run over
-        the evidence of this session (<span id="f-scope">182 lines, 5 files</span>).
-        Move the slider below to change what counts as <b>read</b>, and the whole
-        report recomputes from the same per-line signals.
-      </p>
-      <div class="panel control">
-        <label for="thr">
-          <span class="eyebrow">reviewed at</span>
-          <span class="val" id="thr-val">3 points — on screen + paused + caret moved</span>
-        </label>
-        <input type="range" id="thr" min="1" max="6" step="1" value="3"
-               aria-describedby="thr-verdict">
-        <div class="ticks"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span></div>
-        <p class="verdict" id="thr-verdict"></p>
+    <div class="panel" style="padding:22px 24px">
+      <div class="card-head">
+        <span class="eyebrow">Review Score</span>
+        <span class="mono" style="font-size:.72rem;color:var(--faint)">weighted by what it covered</span>
       </div>
+      <div class="score-head" style="margin-top:14px">
+        <b id="s-score">49</b>
+        <span class="score-track"><i class="score-bar" id="s-bar" style="width:49%"></i></span>
+      </div>
+      <div class="metrics" id="metrics" style="margin-top:16px"></div>
     </div>
   </div>
 </section>
 
-<!-- ======================================================== the definition -->
+<!-- =============================================================== the files -->
 <section>
   <div class="col">
-    <div class="eyebrow">the research question</div>
-    <h2>What counts as "read"</h2>
-    <p class="note">
-      This is the whole question. Everything else — the panel, the risk ranking, the
-      git hook — only makes the answer visible, and if the answer is wrong they are a
-      lie with a progress bar on it. So the model is kept small enough to argue with:
-      a handful of observable signals, weights, and one threshold.
-    </p>
+    <div class="eyebrow">by file · worst risk first</div>
   </div>
-
-  <div class="split">
-    <div>
-      <table class="signals">
-        <thead>
-          <tr><th>signal</th><th>observed</th><th>pts</th></tr>
-        </thead>
-        <tbody>
-          <tr><td>visible</td><td class="desc">on screen for 300 ms or more</td><td>+1</td></tr>
-          <tr><td>focused</td><td class="desc">in the active editor, window focused, 800 ms or more</td><td>+1</td></tr>
-          <tr><td>dwell</td><td class="desc">the viewport held still for a second or more</td><td>+1</td></tr>
-          <tr><td>caret</td><td class="desc">you put the cursor on it, or selected it</td><td>+1</td></tr>
-          <tr><td>edited</td><td class="desc">you typed it yourself</td><td>+2</td></tr>
-        </tbody>
-      </table>
-    </div>
-
-    <div class="col">
-      <p class="note">
-        The default of 3 points is not an arbitrary pick. It is the smallest value at
-        which the three propositions below are <em>all</em> true at once, and those
-        three are pinned as tests — if a later change to the model breaks one of them,
-        that is not tuning, it is a different product.
-      </p>
-      <div class="ineq" id="ineq"></div>
-      <p class="note">
-        What is <b>not</b> counted matters more than the weights. Nothing accrues while
-        the window is unfocused, so a file left in a background tab all day earns one
-        point; scrolling faster than a human reads (45 lines/sec) earns no visibility at
-        all; and any tick longer than two seconds is thrown away whole — the only thing
-        that stops a closed laptop from recording hours of careful reading.
-      </p>
-    </div>
-  </div>
-</section>
-
-<!-- ============================================================== the diff -->
-<section>
-  <div class="col">
-    <div class="eyebrow">what it looks like</div>
-    <h2>Attention drawn over the diff</h2>
-    <p class="note">
-      Every changed line, coloured by what the evidence says about it —
-      <b class="mono" style="color:var(--ember)">orange is what nobody read</b>.
-      Moving the threshold moves this too, because it is the same judgement, not a
-      separate one made for the picture.
-    </p>
-  </div>
-
-  <div class="tabs" id="tabs" role="tablist"></div>
-  <div class="panel">
-    <div class="code-wrap"><div class="code" id="code"></div></div>
-  </div>
-  <div class="legend">
-    <span><i class="swatch" style="background:var(--ember)"></i>unreviewed</span>
-    <span><i class="swatch" style="background:var(--read)"></i>reviewed</span>
-    <span id="code-summary"></span>
-  </div>
-</section>
-
-<!-- ============================================================== the risk -->
-<section>
-  <div class="col">
-    <div class="eyebrow">why a percentage alone is useless</div>
-    <h2>Not every unread line is the same event</h2>
-    <p class="note">
-      Forty unread lines of README and three unread lines of
-      <code>auth/session.ts</code> are not the same thing to have missed. So every line
-      is ranked by its path (<code>auth/</code>, <code>billing/</code>,
-      <code>migrations/</code>) and by its content (<code>eval(</code>,
-      <code>process.env</code>, SQL built by string concatenation), and the report is
-      sorted <b>by risk, not by volume</b>.
-    </p>
-  </div>
-
   <div class="panel" style="padding:18px 22px">
     <div class="table-wrap">
       <table class="files">
@@ -562,89 +425,65 @@ footer {
       </table>
     </div>
   </div>
+</section>
 
-  <div class="col" style="margin-top:14px">
-    <div class="eyebrow">the case that broke it</div>
-    <p class="note">
-      The first implementation sorted by <code>unread lines × risk</code>. It looks
-      reasonable, it is wrong, and <b>a test caught it</b>. Compare the two orderings
-      on the two-file diff below and the reason is visible — it is still a regression
-      test in <code>test/coverage.test.ts</code>.
-    </p>
+<!-- ================================================================ the diff -->
+<section>
+  <div class="col">
+    <div class="eyebrow">every target line · orange is unread</div>
+  </div>
+  <div class="tabs" id="tabs" role="tablist"></div>
+  <div class="panel">
+    <div class="code-wrap"><div class="code" id="code"></div></div>
+  </div>
+  <div class="legend">
+    <span><i class="swatch" style="background:var(--ember)"></i>unreviewed</span>
+    <span><i class="swatch" style="background:var(--read)"></i>reviewed</span>
+    <span id="code-summary"></span>
+  </div>
+</section>
+
+<!-- ============================================================ the settings -->
+<section>
+  <div class="col">
+    <div class="eyebrow">settings · what counts as read</div>
   </div>
 
-  <div class="rank">
-    <div class="toggle" role="group" aria-label="sort order">
-      <button id="sort-risk" aria-pressed="true">risk first (what it does)</button>
-      <button id="sort-vol" aria-pressed="false">unread × risk (what it did)</button>
+  <div class="split">
+    <div class="col">
+      <div class="panel control">
+        <label for="thr">
+          <span class="eyebrow">review threshold</span>
+          <span class="val" id="thr-val">3 points</span>
+        </label>
+        <input type="range" id="thr" min="1" max="6" step="1" value="3"
+               aria-describedby="thr-verdict">
+        <div class="ticks"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span></div>
+        <p class="verdict" id="thr-verdict"></p>
+      </div>
+      <div class="ineq" id="ineq"></div>
     </div>
-    <div class="panel" style="padding:18px 22px">
+
+    <div class="col">
       <div class="table-wrap">
-        <table class="files">
+        <table class="signals">
           <thead>
-            <tr>
-              <th class="num">#</th>
-              <th>file</th>
-              <th class="num">unseen</th>
-              <th>risk</th>
-              <th class="num">unseen × risk</th>
-            </tr>
+            <tr><th>signal</th><th>earned when</th><th>pts</th></tr>
           </thead>
-          <tbody id="regression"></tbody>
+          <tbody id="signal-rows"></tbody>
+        </table>
+      </div>
+      <div class="table-wrap">
+        <table class="signals kv">
+          <thead>
+            <tr><th>setting</th><th>in effect</th></tr>
+          </thead>
+          <tbody id="settings-rows"></tbody>
         </table>
       </div>
     </div>
-    <p class="note" id="rank-note"></p>
   </div>
 </section>
-
-<!-- ============================================================= the score -->
-<section>
-  <div class="split">
-    <div class="col">
-      <div class="eyebrow">the composite</div>
-      <h2>Review Score</h2>
-      <p class="note">
-        Coverage is weighted by <em>what it was coverage of</em>. A diff can be well
-        read overall and barely read where being wrong costs the most, and the score
-        says so instead of averaging the difference away.
-      </p>
-      <p class="note">
-        A component with nothing to measure is not scored zero — it is dropped, and its
-        weight is redistributed over the rest. A diff that never touched critical code
-        should not be penalised for "critical 0%".
-      </p>
-      <p class="note" style="color:var(--faint)">
-        In a diff of nothing but added lines, New code and Coverage come out the same.
-        They diverge once existing lines are modified.
-      </p>
-    </div>
-    <div class="panel" style="padding:22px 24px">
-      <div class="score-head">
-        <b id="s-score">49</b>
-        <span class="score-bar" id="s-bar">█████░░░░░</span>
-      </div>
-      <div class="metrics" id="metrics" style="margin-top:16px"></div>
-    </div>
-  </div>
-</section>
-
-<footer>
-  <p class="eyebrow">where the numbers come from</p>
-  <p class="note">
-    The scoring model lives in <code>src/core/</code> and does not depend on the
-    editor: the definition of "read" has to be re-tunable and replayable without VS
-    Code, or there is no way to check it. Nothing is uploaded and nothing leaves the
-    machine — the evidence stays in the git directory of the repository it is about.
-  </p>
-  <div class="shell">
-<span class="c"># the model, the CLI, a real git repository, the extension</span>
-npm test
-
-<span class="c"># replay a scripted session through the real model</span>
-npm run demo
-  </div>
-</footer>
 
 </div>
 
@@ -758,8 +597,6 @@ function composite(b) {
 const ratio = ([hit, tot]) => (tot > 0 ? hit / tot : 0);
 const pct = v => Math.round(Math.max(0, Math.min(1, v)) * 100);
 const maxRisk = ls => ls.reduce((best, l) => (RISK_RANK[l] > RISK_RANK[best] ? l : best), 'low');
-const bar = v => '█'.repeat(Math.round(Math.max(0, Math.min(1, v)) * 10)) +
-                 '░'.repeat(10 - Math.round(Math.max(0, Math.min(1, v)) * 10));
 
 function groupHunks(unseen) {
   if (!unseen.length) return [];
@@ -784,7 +621,6 @@ function groupHunks(unseen) {
 // ------------------------------------------------------------------ render
 
 let threshold = 3;
-let sortMode = 'risk';
 let activeFile = null;
 let state = null;
 
@@ -808,7 +644,8 @@ function renderCard() {
   $('f-total').textContent = state.total;
   $('f-read').textContent = state.reviewed;
   $('f-unseen').textContent = state.unseen;
-  $('f-scope').textContent = state.total + ' lines, ' + state.files.length + ' files';
+  $('head-scope').textContent = state.total + ' lines · ' + state.files.length +
+    (state.files.length === 1 ? ' file' : ' files');
 
   const ranked = sortFiles(state.files);
   const worst = ranked.find(f => f.unseen > 0 && (f.blindspotRisk === 'critical' || f.blindspotRisk === 'high'));
@@ -824,6 +661,43 @@ function renderCard() {
     strip.style.display = 'none';
   }
 }
+
+const SIGNAL_ROWS = [
+  ['visible', s => 'on screen for ' + ms(s.visibleMsForPoint) + ' or more'],
+  ['focused', s => 'in the active editor, window focused, ' + ms(s.focusedMsForPoint) + ' or more'],
+  ['dwell', s => 'the viewport held still for ' + ms(s.dwellMs) + ' or more'],
+  ['caret', () => 'you put the cursor on it, or the mouse came to rest on it'],
+  ['edited', () => 'you typed it yourself'],
+  ['revisit', s => 'you came back to it after ' + ms(s.revisitGapMs) + ' away'],
+];
+
+function ms(v) {
+  return v >= 1000 ? +(v / 1000).toFixed(v % 1000 ? 1 : 0) + ' s' : v + ' ms';
+}
+
+function renderSettings() {
+  const cfg = DATA.settings;
+  $('signal-rows').innerHTML = SIGNAL_ROWS.map(([name, when]) =>
+    '<tr><td>' + name + '</td><td class="desc">' + escapeHtml(String(when(cfg))) +
+    '</td><td>+' + escapeHtml(String(W[name] || 0)) + '</td></tr>').join('');
+
+  const rows = [
+    ['review threshold', DATA.threshold + ' of ' + total(W) + ' points'],
+    ['read acknowledged at', ms(cfg.readAckMs) + ' of focused time'],
+    ['focus credit caps at', ms(cfg.focusCapMs)],
+    ['idle after', ms(cfg.idleAfterMs) + ' without caret, scroll, mouse or edit'],
+    ['reading speed ceiling', cfg.readingSpeedGuard ? cfg.maxLinesPerSecond + ' lines/sec' : 'off'],
+    ['focal weighting', cfg.focalModel
+      ? 'on · full credit ±' + cfg.focalSpanLines + ' lines, floor ' + cfg.peripheralFloor +
+        ' at ' + cfg.focalDecayLines
+      : 'off · every visible line credited equally'],
+    ['content scaling', cfg.contentScaling ? 'on · thresholds scale with tokens per line' : 'off'],
+  ];
+  $('settings-rows').innerHTML = rows.map(([k, v]) =>
+    '<tr><td>' + k + '</td><td class="desc">' + escapeHtml(String(v)) + '</td></tr>').join('');
+}
+
+const total = w => Object.values(w).reduce((a, b) => a + b, 0);
 
 function renderThreshold() {
   $('thr-val').textContent = THRESHOLD_LABEL[threshold];
@@ -878,42 +752,6 @@ function renderCode() {
     (f.aiLines ? ' · ' + pct(f.aiLines / f.changed) + '% machine-written' : '');
 }
 
-/**
- * The regression case, exactly as it appears in test/coverage.test.ts:
- * forty unread lines of documentation against three unread lines of auth code.
- * The product form puts the harmless one first; that is the bug.
- */
-const REGRESSION = [
-  { path: 'README.md', unseen: 40, risk: 'low' },
-  { path: 'src/auth/session.ts', unseen: 3, risk: 'critical' },
-];
-
-function renderRegression() {
-  const ranked = [...REGRESSION].sort((a, b) =>
-    sortMode === 'volume'
-      ? b.unseen * RISK_RANK[b.risk] - a.unseen * RISK_RANK[a.risk]
-      : RISK_RANK[b.risk] - RISK_RANK[a.risk] || b.unseen - a.unseen);
-
-  $('regression').innerHTML = ranked.map((f, i) => {
-    const severe = f.risk === 'critical' || f.risk === 'high';
-    return '<tr>' +
-      '<td class="num" style="color:var(--faint)">' + (i + 1) + '</td>' +
-      '<td class="path' + (severe ? ' sev' : '') + '">' + escapeHtml(f.path) + '</td>' +
-      '<td class="num" style="color:var(--ember)">' + f.unseen + '</td>' +
-      '<td class="mono" style="font-size:.76rem;color:' + (severe ? 'var(--danger)' : 'var(--muted)') + '">' +
-        f.risk + '</td>' +
-      '<td class="num" style="color:var(--faint)">' + f.unseen * RISK_RANK[f.risk] + '</td>' +
-    '</tr>';
-  }).join('');
-
-  $('rank-note').innerHTML = sortMode === 'volume'
-    ? 'Multiplying puts <b>README first</b>: 40 × 1 = 40 beats 3 × 4 = 12. The first ' +
-      'thing you see before committing is a documentation typo, and the unread ' +
-      'authentication code is below it.'
-    : 'Risk first puts <b>auth first</b>. Volume only orders files inside the same ' +
-      'risk. That judgement is the reason this tool exists, so volume must never ' +
-      'beat risk.'
-}
 
 function renderFiles() {
   const ranked = sortFiles(state.files);
@@ -935,7 +773,7 @@ function renderFiles() {
 function renderScore() {
   const s = state.score;
   $('s-score').textContent = s.score;
-  $('s-bar').textContent = bar(s.score / 100);
+  $('s-bar').style.width = Math.max(0, Math.min(100, s.score)) + '%';
   const rows = [
     ['Coverage', s.coverage, true],
     ['Critical', s.critical, s.measured.critical],
@@ -958,7 +796,7 @@ function escapeHtml(s) {
 
 function renderAll() {
   state = compute(threshold);
-  renderCard(); renderThreshold(); renderIneq(); renderCode(); renderFiles(); renderRegression(); renderScore();
+  renderCard(); renderThreshold(); renderIneq(); renderCode(); renderFiles(); renderScore(); renderSettings();
 }
 
 $('thr').addEventListener('input', e => {
@@ -966,18 +804,8 @@ $('thr').addEventListener('input', e => {
   renderAll();
 });
 
-$('sort-risk').addEventListener('click', () => {
-  sortMode = 'risk';
-  $('sort-risk').setAttribute('aria-pressed', 'true');
-  $('sort-vol').setAttribute('aria-pressed', 'false');
-  renderRegression();
-});
-$('sort-vol').addEventListener('click', () => {
-  sortMode = 'volume';
-  $('sort-risk').setAttribute('aria-pressed', 'false');
-  $('sort-vol').setAttribute('aria-pressed', 'true');
-  renderRegression();
-});
+
+
 
 // In the editor, the file list opens the file at its first unread line and
 // the card's button jumps to the next unread hunk — the same messages the

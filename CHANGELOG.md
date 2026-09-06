@@ -101,9 +101,26 @@
   them describing a 403 from a GitHub app), and it ended in a footer naming the
   working branch it had been written on. All of that shipped in the `.vsix` and
   was what the panel put on screen. The page is now the report and only the
-  report — the card, the threshold slider, the signals, the diff, the risk
-  ranking and the Review Score — in English, and its copy no longer describes
-  the demo scenario as though it were your session.
+  report — in English, and in the order a report is read: the numbers first
+  (coverage, the counts, the worst unread hunk, the Review Score), then the
+  files worst risk first, then every target line of the diff, then the settings
+  that produced all of it. The essays between them are gone, and so is the
+  section arguing for the ranking the file table already uses.
+- **The panel shows the configuration its numbers came from.** A coverage
+  figure with the thresholds hidden is a number you cannot argue with, so the
+  settings table names what is in effect: the review threshold, when each
+  signal is earned, when reading is acknowledged, when focus credit caps, when
+  idling starts, the reading-speed ceiling, and whether focal weighting and
+  content scaling are on. The signal table is built from the configured weights
+  rather than hardcoded — it used to claim `+1/+1/+1/+1/+2` whatever the
+  weights actually were, and never listed `revisit` at all.
+- Values from a repository's `.blindspot/config.json` are escaped before they
+  reach the panel's markup, as the file paths and the line text already were.
+  The config is only read in a trusted workspace, but the webview runs scripts
+  and the file is not ours.
+- The Review Score bar is a drawn meter rather than block-drawing characters,
+  which rendered as whatever the panel's font had for them, and the last two
+  columns of the file table no longer run into each other.
 - English is the primary `README.md`, and so the page anyone reads on the
   extension listing; the Korean text moves to `README.ko.md` and stays out of
   the `.vsix`. The two link to each other, and the English one is the canonical

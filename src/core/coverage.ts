@@ -106,7 +106,31 @@ export interface PageData {
   weights: SignalWeights;
   threshold: number;
   riskWeights: Record<RiskLevel, number>;
+  /**
+   * The configuration the evidence was collected under. The panel shows it
+   * because every number above it is only meaningful next to the definition
+   * that produced it — a coverage figure with the thresholds hidden is a
+   * number you cannot argue with.
+   */
+  settings: PageSettings;
   files: Array<{ path: string; lines: PageLine[] }>;
+}
+
+export interface PageSettings {
+  visibleMsForPoint: number;
+  focusedMsForPoint: number;
+  dwellMs: number;
+  readAckMs: number;
+  focusCapMs: number;
+  idleAfterMs: number;
+  revisitGapMs: number;
+  maxLinesPerSecond: number;
+  readingSpeedGuard: boolean;
+  focalModel: boolean;
+  focalSpanLines: number;
+  focalDecayLines: number;
+  peripheralFloor: number;
+  contentScaling: boolean;
 }
 
 /**
@@ -138,6 +162,22 @@ export function pageData(diffs: FileDiff[], sources: ReportSources, cfg: Blindsp
     weights: cfg.weights,
     threshold: cfg.reviewThresholdPoints,
     riskWeights: cfg.riskWeights,
+    settings: {
+      visibleMsForPoint: cfg.visibleMsForPoint,
+      focusedMsForPoint: cfg.focusedMsForPoint,
+      dwellMs: cfg.dwellMs,
+      readAckMs: cfg.readAckMs,
+      focusCapMs: cfg.focusCapMs,
+      idleAfterMs: cfg.idleAfterMs,
+      revisitGapMs: cfg.revisitGapMs,
+      maxLinesPerSecond: cfg.maxLinesPerSecond,
+      readingSpeedGuard: cfg.readingSpeedGuard,
+      focalModel: cfg.focalModel,
+      focalSpanLines: cfg.focalSpanLines,
+      focalDecayLines: cfg.focalDecayLines,
+      peripheralFloor: cfg.peripheralFloor,
+      contentScaling: cfg.contentScaling,
+    },
     files,
   };
 }
