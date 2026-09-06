@@ -1,4 +1,3 @@
-import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { BlindspotConfig } from '../core/config';
 import { LineLedger, hasEvidence, type StoredLine } from '../core/ledger';
@@ -6,6 +5,7 @@ import { isIgnored } from '../core/coverage';
 import { attentionNorm, focusLine } from '../core/attention';
 import { emptyActivity, type ActivityCounts, type LineEvidence, type Provenance } from '../core/types';
 import { STATE_VERSION, type AiRegions, type BlindspotState } from '../core/store';
+import { relativeToRoot } from './workspace';
 
 const TICK_MS = 250;
 /**
@@ -110,8 +110,8 @@ export class AttentionTracker implements vscode.Disposable {
 
   private key(doc: vscode.TextDocument): string | null {
     if (doc.uri.scheme !== 'file') return null;
-    const rel = path.relative(this.ctx.root, doc.uri.fsPath).split(path.sep).join('/');
-    if (!rel || rel.startsWith('..')) return null;
+    const rel = relativeToRoot(this.ctx.root, doc.uri.fsPath);
+    if (!rel) return null;
     if (isIgnored(rel, this.cfg.ignore)) return null;
     return rel;
   }

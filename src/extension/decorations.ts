@@ -1,6 +1,6 @@
-import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { DiffReport } from '../core/types';
+import { relativeToRoot } from './workspace';
 
 /**
  * In-editor markers for lines you have not read yet.
@@ -68,7 +68,11 @@ export class Decorations implements vscode.Disposable {
   applyTo(editor: vscode.TextEditor, report: DiffReport | null, root: string): void {
     if (!this.enabled || !report) return;
     if (editor.document.uri.scheme !== 'file') return;
-    const rel = path.relative(root, editor.document.uri.fsPath).split(path.sep).join('/');
+    // A file belonging to another root of a multi-root workspace is another
+    // controller's to mark; leaving its markers alone is what lets the two
+    // decorate side by side.
+    const rel = relativeToRoot(root, editor.document.uri.fsPath);
+    if (!rel) return;
     const hunks = report.hunks.filter((h) => h.file === rel);
 
     // `setDecorations` is a round trip to the renderer per call, and the

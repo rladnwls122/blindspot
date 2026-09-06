@@ -39,3 +39,25 @@ export async function findWorkspace(folder: string): Promise<WorkspaceContext> {
   const git = await findGitContext(folder);
   return git ? workspaceFromGit(git) : workspaceWithoutGit(folder);
 }
+
+/**
+ * The key everything inside a root is stored under: the path relative to that
+ * root, with forward slashes, or null when the file is not under it at all.
+ *
+ * The evidence, the report, the decorations and the hover all key on this, so
+ * they only agree while they compute it the same way — which is why it is one
+ * function rather than the four near-copies it used to be. Two of those copies
+ * were missing the absolute-path rejection, and on Windows `path.relative`
+ * between two drives returns an absolute path rather than one starting with
+ * `..`: a file on `D:` was accepted as belonging to a repository on `C:`, and
+ * the evidence collected for it was written under a key nothing could ever
+ * read back.
+ */
+export function relativeToRoot(root: string, fsPath: string): string | null {
+  const rel = path.relative(root, fsPath).split(path.sep).join('/');
+  if (!rel || path.isAbsolute(rel) || /^[a-zA-Z]:/.test(rel)) return null;
+  // Only a leading `..` segment means "outside"; a file really named `..cache`
+  // is inside, and `startsWith('..')` used to throw it away.
+  if (rel.split('/')[0] === '..') return null;
+  return rel;
+}

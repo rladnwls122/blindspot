@@ -21,8 +21,28 @@ export class StatusBar implements vscode.Disposable {
   }
 
   update(report: DiffReport | null, visible: boolean): void {
-    if (!visible || !report || report.totalChangedLines === 0) {
+    if (!visible || !report) {
       this.item.hide();
+      return;
+    }
+    // An empty target is not a reason to disappear. A tool that vanishes on a
+    // clean tree is indistinguishable from a tool that has crashed, and the
+    // person has no way to tell which — so it stays, and says it is idle.
+    if (report.totalChangedLines === 0) {
+      this.item.text = '$(eye) Blindspot';
+      this.item.tooltip = new vscode.MarkdownString(
+        [
+          `**Blindspot · ${MODE_LABEL[report.mode]}** — ${baseLabel(report)}`,
+          '',
+          report.mode === 'reading'
+            ? 'No file opened here yet. Open one and reading starts.'
+            : 'Nothing changed since the base, so there is nothing to review.',
+          '',
+          '_Click to open the report. Switch mode with `Blindspot: Switch Mode`._',
+        ].join('\n'),
+      );
+      this.item.backgroundColor = undefined;
+      this.item.show();
       return;
     }
     const h = headline(report);

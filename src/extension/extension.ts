@@ -10,14 +10,14 @@ import type { AiRegions } from '../core/store';
 import { CommitWatcher } from './commitwatch';
 import { Decorations } from './decorations';
 import { EvidenceHover } from './hover';
-import { collectDiff, commitExists, findGitContext, headCommit } from './git';
+import { collectDiff, commitExists, headCommit } from './git';
 import { Navigator } from './navigator';
 import { ReportPanel, type PanelMessage, type PanelView } from './panel';
 import { StatusBar } from './statusbar';
 import { installHook, loadAiRegions, loadConfig, loadState, saveState } from './storage';
 import { AttentionTracker, docLines } from './tracker';
 import { BlindspotTree } from './tree';
-import { findWorkspace, workspaceFromGit, type WorkspaceContext } from './workspace';
+import { findWorkspace, relativeToRoot, type WorkspaceContext } from './workspace';
 
 const SAVE_DEBOUNCE_MS = 5000;
 const DISABLED_NOTE = 'Tracking is off (blindspot.enabled)';
@@ -32,7 +32,18 @@ function isRepoRelative(file: string): boolean {
   return !file.split(/[\\/]/).some((segment) => segment === '..');
 }
 
-let controller: Controller | undefined;
+/**
+ * One controller per workspace root, all of them tracking at once.
+ *
+ * There used to be exactly one, for the first folder that happened to be a git
+ * repository, and every file in every other folder of a multi-root workspace
+ * was silently dropped on the floor — opened, read, and recorded nowhere.
+ * Tracking is per root because the evidence, the diff and the state file all
+ * are; the surfaces that can only exist once (the commands, the status bar,
+ * the sidebar) belong to whichever root the active editor is in.
+ */
+const controllers = new Map<string, Controller>();
+let uiOwner: Controller | undefined;
 
 /** Every command the extension contributes, in package.json order. */
 const COMMAND_IDS = [
@@ -50,56 +61,108 @@ const COMMAND_IDS = [
 ] as const;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
-  if (!(await tryStart(context))) {
-    // No folder yet, or startup failed. Register the commands anyway so the
-    // palette explains itself instead of answering "command not found", and
-    // retry when the workspace changes — `git init` in an open folder is a
-    // completely ordinary thing to do.
-    installFallbackCommands(context);
-    context.subscriptions.push(
-      vscode.workspace.onDidChangeWorkspaceFolders(() => void tryStart(context)),
-    );
-  }
+  context.subscriptions.push(
+    // `git init` in an open folder, or a folder added to the workspace, is a
+    // completely ordinary thing to do; both change what there is to track.
+    vscode.workspace.onDidChangeWorkspaceFolders(() => void tryStart(context)),
+    // The surfaces that exist once follow the file you are looking at.
+    vscode.window.onDidChangeActiveTextEditor(() => pickUiOwner()),
+  );
+  await tryStart(context);
 }
 
-/** Bring the controller up, or explain why it could not come up. */
+/** Bring the controllers up, or explain why they could not come up. */
 async function tryStart(context: vscode.ExtensionContext): Promise<boolean> {
-  if (controller) return true;
-  const ctx = await findWorkspaceFolder();
-  if (!ctx) return false;
-  const started = new Controller(context, ctx);
-  try {
-    await started.start();
-    controller = started;
-    context.subscriptions.push(started);
-    return true;
-  } catch (err) {
-    // Startup gets partway through before it fails, and what it got through is
-    // a tick interval and a file watcher. Leaving those running would be a
-    // background process nobody can see, in an extension that reported itself
-    // as not running.
-    started.dispose();
-    // A review tool that breaks the editor it is measuring has failed twice.
-    void vscode.window.showErrorMessage(
-      `Blindspot could not start: ${err instanceof Error ? err.message : String(err)}`,
-    );
+  const wanted = await workspaceContexts();
+
+  // A folder that is gone stops being tracked, and takes its evidence to disk
+  // on the way out.
+  for (const [root, existing] of [...controllers]) {
+    if (wanted.has(root)) continue;
+    controllers.delete(root);
+    if (uiOwner === existing) uiOwner = undefined;
+    existing.dispose();
+  }
+
+  for (const [root, ws] of wanted) {
+    if (controllers.has(root)) continue;
+    const started = new Controller(context, ws);
+    try {
+      await started.startTracking();
+      controllers.set(root, started);
+      context.subscriptions.push(started);
+    } catch (err) {
+      // Startup gets partway through before it fails, and what it got through
+      // is a tick interval and a file watcher. Leaving those running would be
+      // a background process nobody can see, in an extension that reported
+      // itself as not running.
+      started.dispose();
+      // A review tool that breaks the editor it is measuring has failed twice.
+      void vscode.window.showErrorMessage(
+        `Blindspot could not start: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
+  if (controllers.size === 0) {
+    // No folder yet, or every root failed to start. Register the commands
+    // anyway so the palette explains itself instead of answering "command not
+    // found".
+    uiOwner = undefined;
+    installFallbackCommands(context);
     return false;
   }
+  pickUiOwner();
+  return true;
 }
 
 /**
- * The first workspace folder that is inside a git repository, or failing that
- * the first folder at all — reading code needs a folder, not a repository.
- * Checking every folder rather than only the first is what makes a multi-root
- * workspace with the repo in second position work.
+ * One workspace context per distinct root. Two folders inside one repository
+ * share a root and so share a controller: tracking them twice would be two
+ * ledgers, two state files and two answers to the same question.
  */
-async function findWorkspaceFolder(): Promise<WorkspaceContext | null> {
-  const folders = vscode.workspace.workspaceFolders ?? [];
-  for (const folder of folders) {
-    const git = await findGitContext(folder.uri.fsPath);
-    if (git) return workspaceFromGit(git);
+async function workspaceContexts(): Promise<Map<string, WorkspaceContext>> {
+  const out = new Map<string, WorkspaceContext>();
+  for (const folder of vscode.workspace.workspaceFolders ?? []) {
+    const ws = await findWorkspace(folder.uri.fsPath);
+    if (!out.has(ws.root)) out.set(ws.root, ws);
   }
-  return folders.length > 0 ? findWorkspace(folders[0].uri.fsPath) : null;
+  return out;
+}
+
+/** The controller a file belongs to; the innermost, when roots are nested. */
+function controllerFor(uri: vscode.Uri | undefined): Controller | undefined {
+  if (!uri || uri.scheme !== 'file') return undefined;
+  let best: Controller | undefined;
+  for (const c of controllers.values()) {
+    if (c.owns(uri) && (!best || c.rootPath.length > best.rootPath.length)) best = c;
+  }
+  return best;
+}
+
+/**
+ * Hand the single-instance surfaces to the root of the file being looked at.
+ *
+ * Falling back to the current owner rather than to the first root is what
+ * stops the status bar from flickering between repositories every time the
+ * active editor is a settings tab, an output channel or nothing at all.
+ */
+function pickUiOwner(): void {
+  const all = [...controllers.values()];
+  const next =
+    controllerFor(vscode.window.activeTextEditor?.document.uri) ??
+    (uiOwner && all.includes(uiOwner) ? uiOwner : undefined) ??
+    all.find((c) => c.hasGit) ??
+    all[0];
+  claimUi(next);
+}
+
+/** Give one controller the single-instance surfaces, taking them off the last. */
+function claimUi(next: Controller | undefined): void {
+  if (next === uiOwner) return;
+  uiOwner?.releaseUi();
+  uiOwner = next;
+  uiOwner?.takeUi();
 }
 
 let fallbackCommands: vscode.Disposable[] = [];
@@ -127,10 +190,11 @@ function installFallbackCommands(context: vscode.ExtensionContext): void {
 }
 
 export function deactivate(): Promise<void> | void {
-  const pending = controller?.flush();
-  controller = undefined;
+  const pending = [...controllers.values()].map((c) => c.flush());
+  controllers.clear();
+  uiOwner = undefined;
   disposeFallbackCommands();
-  return pending;
+  return pending.length > 0 ? Promise.all(pending).then(() => undefined) : undefined;
 }
 
 class Controller implements vscode.Disposable {
@@ -139,7 +203,9 @@ class Controller implements vscode.Disposable {
   private tracker!: AttentionTracker;
   private readonly statusBar = new StatusBar();
   private readonly decorations = new Decorations();
-  private tree!: BlindspotTree;
+  /** Only while this controller owns the single-instance surfaces. */
+  private tree: BlindspotTree | undefined;
+  private uiOwned = false;
   private navigator!: Navigator;
   private commitWatcher!: CommitWatcher;
   private report: DiffReport | null = null;
@@ -158,6 +224,8 @@ class Controller implements vscode.Disposable {
    * command ids, which the fallback handlers must be able to register again.
    */
   private readonly subscriptions: vscode.Disposable[] = [];
+  /** The subset that goes back when another root takes the UI over. */
+  private readonly uiSubscriptions: vscode.Disposable[] = [];
   private readonly textCache = new Map<
     string,
     { mtimeMs: number; size: number; lines: string[] }
@@ -172,7 +240,12 @@ class Controller implements vscode.Disposable {
     return this.ws.root;
   }
 
-  async start(): Promise<void> {
+  /**
+   * Everything this root needs to be measured: the evidence, the report, the
+   * markers. Not the commands, the status bar or the sidebar — VS Code has one
+   * of each and several roots, so those arrive with `takeUi`.
+   */
+  async startTracking(): Promise<void> {
     this.cfg = await this.resolveConfig();
     this.aiRegions = await loadAiRegions(this.ws);
     this.navigator = new Navigator(this.root);
@@ -181,15 +254,12 @@ class Controller implements vscode.Disposable {
       this.scheduleSave(),
     );
     this.tracker.start(await loadState(this.ws));
-    this.tree = new BlindspotTree(this.root);
 
     this.commitWatcher = new CommitWatcher(this.root, () => this.onStaged());
     if (this.ws.git) void this.commitWatcher.start();
 
     // Honour the setting at startup, not only when it next changes.
     this.decorations.setEnabled(this.setting('decorateUnreviewed', true));
-
-    this.registerCommands();
 
     // Seed the focus flag here, not at construction: several awaits have
     // passed since then, and a focus change in that gap would otherwise leave
@@ -200,7 +270,11 @@ class Controller implements vscode.Disposable {
         if (e.affectsConfiguration('blindspot')) void this.reloadConfig();
       }),
       vscode.workspace.onDidGrantWorkspaceTrust(() => void this.reloadConfig()),
-      vscode.workspace.onDidSaveTextDocument(() => void this.refresh()),
+      // Saving a file in another root is that root's business, and rebuilding
+      // every report on every save is a git process per repository per save.
+      vscode.workspace.onDidSaveTextDocument((doc) => {
+        if (this.owns(doc.uri)) void this.refresh();
+      }),
       vscode.window.onDidChangeVisibleTextEditors(() =>
         this.decorations.apply(this.report, this.root),
       ),
@@ -227,6 +301,39 @@ class Controller implements vscode.Disposable {
 
     this.scheduleRefresh();
     await this.refresh();
+  }
+
+  // ------------------------------------------------------------- ui ownership
+
+  /**
+   * Take the surfaces there is only one of. The commands dispatch to whoever
+   * holds them, so exactly one controller may hold them at a time — VS Code
+   * refuses a second registration of an id, and a second tree view of an id.
+   */
+  takeUi(): void {
+    if (this.uiOwned || this.disposed) return;
+    this.uiOwned = true;
+    this.registerCommands();
+    this.tree = new BlindspotTree(this.root);
+    this.tree.update(this.report);
+    this.statusBar.update(this.report, this.setting('showStatusBar', true));
+    void this.refresh();
+  }
+
+  /** Hand them back. The evidence keeps being collected either way. */
+  releaseUi(): void {
+    if (!this.uiOwned) return;
+    this.uiOwned = false;
+    for (const d of this.uiSubscriptions.splice(0)) {
+      try {
+        d.dispose();
+      } catch (err) {
+        console.error('[blindspot] releasing the UI failed', err);
+      }
+    }
+    this.tree?.dispose();
+    this.tree = undefined;
+    this.statusBar.update(null, false);
   }
 
   // ------------------------------------------------------------------ config
@@ -305,16 +412,28 @@ class Controller implements vscode.Disposable {
     }
     this.refreshing = true;
     try {
-      const { report, targets, sources } = await this.measure(this.targetMode());
+      let { report, targets, sources } = await this.measure(this.targetMode());
+      // "auto" has to mean auto. A clean tree has no diff to review, and a
+      // report of nothing is what a broken extension looks like; reading is
+      // the target that still has something to say. An explicit `diff` is
+      // left alone — that person asked for the diff, empty or not.
+      const auto = this.setting<string>('mode', 'auto') === 'auto';
+      if (auto && report.mode === 'diff' && report.totalChangedLines === 0) {
+        ({ report, targets, sources } = await this.measure('reading'));
+      }
       this.report = report;
       this.targets = targets;
       this.navigator.sync(this.report);
-      this.statusBar.update(this.report, this.setting('showStatusBar', true));
+      // The markers are per file, so every root paints its own. The rest is
+      // shared with the other roots and belongs to whoever holds the UI.
       this.decorations.apply(this.report, this.root);
-      this.tree.update(this.report);
-      // The page's evidence costs another pass over every target line; only
-      // pay for it while someone can see it.
-      ReportPanel.active?.update({ report, data: pageData(targets, sources, this.cfg) });
+      if (this.uiOwned) {
+        this.statusBar.update(this.report, this.setting('showStatusBar', true));
+        this.tree?.update(this.report);
+        // The page's evidence costs another pass over every target line; only
+        // pay for it while someone can see it.
+        ReportPanel.active?.update({ report, data: pageData(targets, sources, this.cfg) });
+      }
       return this.report;
     } catch (err) {
       console.error('[blindspot] refresh failed', err);
@@ -342,7 +461,7 @@ class Controller implements vscode.Disposable {
     this.navigator.sync(null);
     this.statusBar.update(null, false);
     this.decorations.clear();
-    this.tree.update(null, DISABLED_NOTE);
+    this.tree?.update(null, DISABLED_NOTE);
   }
 
   /**
@@ -490,9 +609,20 @@ class Controller implements vscode.Disposable {
    */
   private relativePath(uri: vscode.Uri): string | null {
     if (uri.scheme !== 'file') return null;
-    const rel = path.relative(this.root, uri.fsPath).split(path.sep).join('/');
-    if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) return null;
-    return rel;
+    return relativeToRoot(this.root, uri.fsPath);
+  }
+
+  /** Whether this document belongs to this root. The fleet routes on it. */
+  owns(uri: vscode.Uri): boolean {
+    return this.relativePath(uri) !== null;
+  }
+
+  get rootPath(): string {
+    return this.root;
+  }
+
+  get hasGit(): boolean {
+    return this.ws.git !== null;
   }
 
   // ---------------------------------------------------------------- commands
@@ -503,7 +633,7 @@ class Controller implements vscode.Disposable {
     // A command that throws surfaces as a generic VS Code error naming the
     // command id. Catch it here so the message says what actually failed.
     const push = (id: string, fn: (...args: any[]) => any) =>
-      this.subscriptions.push(
+      this.uiSubscriptions.push(
         vscode.commands.registerCommand(id, async (...args: any[]) => {
           try {
             return await fn(...args);
@@ -849,6 +979,9 @@ class Controller implements vscode.Disposable {
       'Show Report',
     );
     if (!choice) return;
+    // The commit being warned about is in this root, so this root is the one
+    // the report, the sidebar and the walk should now be about.
+    claimUi(this);
     // Either action is about the diff; the panel and the navigator follow the
     // mode, so the mode follows the commit.
     if (live.mode !== 'diff') await this.setMode('diff');
@@ -880,6 +1013,7 @@ class Controller implements vscode.Disposable {
 
   dispose(): void {
     this.disposed = true;
+    this.releaseUi();
     if (this.refreshTimer) clearInterval(this.refreshTimer);
     if (this.saveTimer) clearTimeout(this.saveTimer);
     for (const d of this.subscriptions.splice(0)) {

@@ -4,7 +4,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { findWorkspace, workspaceWithoutGit } from '../src/extension/workspace';
+import { findWorkspace, relativeToRoot, workspaceWithoutGit } from '../src/extension/workspace';
 
 /**
  * Reading code needs a folder, not a repository. What differs between the two
@@ -43,5 +43,32 @@ describe('findWorkspace', () => {
     const c = workspaceWithoutGit('C:/Work/Other', '/home/x');
     assert.equal(a.stateDir, b.stateDir);
     assert.notEqual(a.stateDir, c.stateDir);
+  });
+});
+
+describe('relativeToRoot', () => {
+  const root = path.resolve(path.sep === '\\' ? 'C:/repo' : '/repo');
+  const inside = (...parts: string[]) => path.join(root, ...parts);
+
+  test('a file inside the root becomes a forward-slash relative key', () => {
+    assert.equal(relativeToRoot(root, inside('src', 'a.ts')), 'src/a.ts');
+  });
+
+  test('a file outside the root is not ours', () => {
+    assert.equal(relativeToRoot(root, path.join(path.dirname(root), 'other', 'a.ts')), null);
+    assert.equal(relativeToRoot(root, root), null);
+  });
+
+  test('a file on another Windows drive is not ours either', () => {
+    // The bug this pins: between two drives `path.relative` returns an
+    // absolute path, not one starting with `..`, so a `startsWith('..')`
+    // check accepted `D:\x\a.ts` as a file inside a repository on `C:`.
+    if (path.sep !== '\\') return;
+    const rel = relativeToRoot('C:\\repo', 'D:\\x\\a.ts');
+    assert.equal(rel, null, `should not be inside C:\\repo, got ${rel}`);
+  });
+
+  test('a file whose name merely starts with dots is inside', () => {
+    assert.equal(relativeToRoot(root, inside('..cache')), '..cache');
   });
 });

@@ -91,6 +91,41 @@
   sidebar and the markers as if it were live. Both now clear, and the sidebar
   says tracking is off.
 
+## [0.3.2] — 2026-09-06
+
+### Changed
+
+- English is the primary `README.md`, and so the page anyone reads on the
+  extension listing; the Korean text moves to `README.ko.md` and stays out of
+  the `.vsix`. The two link to each other, and the English one is the canonical
+  version when they disagree.
+
+### Fixed
+
+- **Every folder of a multi-root workspace is tracked, not just the first.**
+  There was one controller, for the first folder that happened to be a git
+  repository, and it recorded evidence for files under that root alone. Every
+  file in every other folder was opened, read, and recorded nowhere — no
+  markers, no report, and `Mark File as Reviewed` answered "not a tracked file
+  in this repository". There is now one per root, all of them tracking at once;
+  the surfaces VS Code only has one of — the commands, the status bar, the
+  sidebar — follow the root of the file you are looking at. Two folders inside
+  one repository still share a single controller.
+- **The status bar no longer disappears when there is nothing to report.** On a
+  clean tree the diff is empty, and an empty report used to hide the status bar
+  item outright, which is indistinguishable from a crashed extension. It stays,
+  says it is idle, and the tooltip says why.
+- **`auto` mode is actually automatic.** It resolved to `diff` in any git
+  repository and stopped there, so committing everything left nothing to
+  measure. It now falls back to reading when the diff is empty. An explicit
+  `blindspot.mode: diff` is left alone.
+- **A file on another Windows drive is no longer treated as being inside the
+  repository.** `path.relative` between two drives returns an absolute path
+  rather than one starting with `..`, so the `..` check accepted it; evidence
+  was then collected under a key nothing could read back, and silently
+  discarded at save time. The four near-copies of that check are now one
+  function, which also stops a file genuinely named `..cache` being thrown out.
+
 ## [0.3.1] — 2026-09-01
 
 ### Added

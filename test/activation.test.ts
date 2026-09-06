@@ -27,9 +27,17 @@ interface Stub {
   /** Make one late step of startup blow up, to test the failure path. */
   failHoverRegistration: boolean;
   folderListeners: Array<() => void>;
+  activeEditorListeners: Array<() => void>;
   treeViews: Array<{ id: string; provider: any }>;
   /** Settings written through `getConfiguration().update`. */
   settings: Record<string, unknown>;
+  /** The one status bar item, so a test can see whether it is on screen. */
+  statusBar: { visible: boolean; text: string };
+  /** Documents the person has open, for the reading target. */
+  openDocuments: Array<{ uri: { fsPath: string; scheme: string } }>;
+  /** What the person is looking at, which decides who owns the shared UI. */
+  activeEditor: any;
+  infos: string[];
 }
 
 let stub: Stub;
@@ -57,11 +65,15 @@ function makeVscode(): any {
       onDidSaveTextDocument: () => disposable(() => {}),
       onDidCloseTextDocument: () => disposable(() => {}),
       onDidChangeTextDocument: () => disposable(() => {}),
-      textDocuments: [],
+      get textDocuments() {
+        return stub.openDocuments;
+      },
     },
     window: {
       state: { focused: true },
-      activeTextEditor: undefined,
+      get activeTextEditor() {
+        return stub.activeEditor;
+      },
       visibleTextEditors: [],
       showWarningMessage: (m: string) => {
         stub.warnings.push(m);
@@ -71,12 +83,34 @@ function makeVscode(): any {
         stub.errors.push(m);
         return Promise.resolve(undefined);
       },
-      showInformationMessage: () => Promise.resolve(undefined),
+      showInformationMessage: (m: string) => {
+        stub.infos.push(m);
+        return Promise.resolve(undefined);
+      },
       showQuickPick: () => Promise.resolve(undefined),
       onDidChangeWindowState: () => disposable(() => {}),
       onDidChangeTextEditorSelection: () => disposable(() => {}),
       onDidChangeVisibleTextEditors: () => disposable(() => {}),
-      createStatusBarItem: () => ({ show() {}, hide() {}, dispose() {}, text: '', tooltip: '' }),
+      onDidChangeActiveTextEditor: (fn: () => void) => {
+        stub.activeEditorListeners.push(fn);
+        return disposable(() => {});
+      },
+      createStatusBarItem: () => ({
+        show() {
+          stub.statusBar.visible = true;
+        },
+        hide() {
+          stub.statusBar.visible = false;
+        },
+        dispose() {},
+        set text(v: string) {
+          stub.statusBar.text = v;
+        },
+        get text() {
+          return stub.statusBar.text;
+        },
+        tooltip: '',
+      }),
       createTextEditorDecorationType: () => ({ dispose() {} }),
       createTreeView: (id: string, options: { treeDataProvider: unknown }) => {
         stub.treeViews.push({ id, provider: options.treeDataProvider });
@@ -178,9 +212,14 @@ describe('activation outside a git repository', { concurrency: 1 }, () => {
       errors: [],
       folders: [],
       folderListeners: [],
+      activeEditorListeners: [],
       failHoverRegistration: false,
       treeViews: [],
       settings: {},
+      statusBar: { visible: false, text: '' },
+      openDocuments: [],
+      activeEditor: undefined,
+      infos: [],
     };
   });
   afterEach(teardown);
@@ -259,9 +298,14 @@ describe('activation inside a git repository', { concurrency: 1 }, () => {
       errors: [],
       folders: [],
       folderListeners: [],
+      activeEditorListeners: [],
       failHoverRegistration: false,
       treeViews: [],
       settings: {},
+      statusBar: { visible: false, text: '' },
+      openDocuments: [],
+      activeEditor: undefined,
+      infos: [],
     };
   });
   afterEach(teardown);
@@ -346,6 +390,108 @@ describe('activation inside a git repository', { concurrency: 1 }, () => {
     );
     // A brand-new repository has no HEAD to diff against; starting up in one
     // must not be an error the user has to see.
+    assert.deepEqual(stub.errors, []);
+  });
+
+  test('a clean tree keeps the status bar, and auto falls back to reading', async () => {
+    const repo = tempDir();
+    execFileSync('git', ['init', '-q'], { cwd: repo });
+    execFileSync('git', ['config', 'user.email', 't@t'], { cwd: repo });
+    execFileSync('git', ['config', 'user.name', 'T'], { cwd: repo });
+    const lines = ['const a = 1;', 'const b = 2;', 'export { a, b };'];
+    fs.writeFileSync(path.join(repo, 'a.ts'), lines.join('\n'));
+    execFileSync('git', ['add', '-A'], { cwd: repo });
+    execFileSync('git', ['commit', '-qm', 'first'], { cwd: repo });
+
+    stub.folders = [{ uri: { fsPath: repo } }];
+    stub.openDocuments = [
+      {
+        uri: { fsPath: path.join(repo, 'a.ts'), scheme: 'file' },
+        lineCount: lines.length,
+        lineAt: (i: number) => ({ text: lines[i] }),
+      } as any,
+    ];
+    await extension.activate(fakeContext());
+    await stub.commands.get('blindspot.refresh')!();
+
+    // Committing everything used to make the whole thing vanish: the diff was
+    // empty, so the status bar hid, and nothing on screen said the extension
+    // was still alive. Reading has something to say, and `auto` must reach it.
+    assert.equal(stub.statusBar.visible, true, 'the status bar must not vanish on a clean tree');
+    assert.match(stub.statusBar.text, /read$/, `reading mode, not an empty diff: ${stub.statusBar.text}`);
+    assert.deepEqual(stub.errors, []);
+  });
+
+  test('every root of a multi-root workspace is tracked, not just the first', async () => {
+    const first = tempDir();
+    const second = tempDir();
+    for (const repo of [first, second]) execFileSync('git', ['init', '-q'], { cwd: repo });
+    const file = path.join(second, 'a.ts');
+    fs.writeFileSync(file, 'const a = 1;\n');
+
+    stub.folders = [{ uri: { fsPath: first } }, { uri: { fsPath: second } }];
+    await extension.activate(fakeContext());
+
+    // The shared surfaces exist once however many roots there are: VS Code
+    // refuses a second registration of a command id or a view id.
+    assert.equal(stub.treeViews.length, 1, 'one sidebar, not one per root');
+
+    // The file is in the second root. Before this, the one controller was
+    // rooted at the first folder and every file in the second was a file it
+    // had never heard of — it refused to mark it, and tracked nothing in it.
+    stub.activeEditor = {
+      document: {
+        uri: { fsPath: file, scheme: 'file' },
+        lineCount: 1,
+        lineAt: () => ({ text: 'const a = 1;' }),
+      },
+    };
+    for (const fn of stub.activeEditorListeners) fn();
+    assert.equal(stub.treeViews.length, 2, 'the second root took the sidebar over');
+
+    await stub.commands.get('blindspot.markFileReviewed')!();
+    assert.equal(
+      stub.warnings.filter((w) => /not a tracked file/i.test(w)).length,
+      0,
+      `a file in the second root is tracked: ${JSON.stringify(stub.warnings)}`,
+    );
+    assert.match(stub.infos.at(-1) ?? '', /marked a\.ts as reviewed/);
+    assert.deepEqual(stub.errors, []);
+  });
+
+  test('two folders inside one repository share one controller', async () => {
+    const repo = tempDir();
+    execFileSync('git', ['init', '-q'], { cwd: repo });
+    const sub = path.join(repo, 'packages');
+    fs.mkdirSync(sub);
+
+    stub.folders = [{ uri: { fsPath: repo } }, { uri: { fsPath: sub } }];
+    await extension.activate(fakeContext());
+
+    // Both folders resolve to the same repository root. Two controllers on it
+    // would be two ledgers and two state files racing over the same evidence.
+    assert.equal(stub.treeViews.length, 1);
+    assert.deepEqual(stub.errors, []);
+  });
+
+  test('an explicit diff mode is left alone, and still says so when empty', async () => {
+    const repo = tempDir();
+    execFileSync('git', ['init', '-q'], { cwd: repo });
+    execFileSync('git', ['config', 'user.email', 't@t'], { cwd: repo });
+    execFileSync('git', ['config', 'user.name', 'T'], { cwd: repo });
+    fs.writeFileSync(path.join(repo, 'a.ts'), 'const a = 1;\n');
+    execFileSync('git', ['add', '-A'], { cwd: repo });
+    execFileSync('git', ['commit', '-qm', 'first'], { cwd: repo });
+
+    stub.settings['mode'] = 'diff';
+    stub.folders = [{ uri: { fsPath: repo } }];
+    await extension.activate(fakeContext());
+    await stub.commands.get('blindspot.refresh')!();
+
+    // Asking for the diff and getting reading instead would be the tool
+    // overruling the person. It stays on the diff — and stays on screen.
+    assert.equal(stub.statusBar.visible, true);
+    assert.equal(stub.statusBar.text, '$(eye) Blindspot');
     assert.deepEqual(stub.errors, []);
   });
 });
