@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { mergeDiffs, parseUnifiedDiff } from '../src/core/diff';
+import { mergeDiffs, parseUnifiedDiff, unquote } from '../src/core/diff';
 
 describe('parseUnifiedDiff', () => {
   test('reads added line numbers from the new file', () => {
@@ -137,6 +137,75 @@ index 0000000..3333333
 
   test('returns nothing for an empty diff', () => {
     assert.deepEqual(parseUnifiedDiff(''), []);
+  });
+
+  test('a submodule pointer is not a file with an unread line in it', () => {
+    const diff = `diff --git a/sub b/sub
+index ce70b8b..9cd8d18 160000
+--- a/sub
++++ b/sub
+@@ -1 +1 @@
+-Subproject commit ce70b8b91bbd3f708c8f337d26e7d85e3513c2df
++Subproject commit 9cd8d18c0995bd938470b9f2908a381998837814
+`;
+    // `sub` is a directory. Counted as a changed line it was a line nobody
+    // could ever open, read, or clear — coverage that could not reach 100%.
+    assert.deepEqual(parseUnifiedDiff(diff), []);
+  });
+
+  test('a quoted, octal-escaped path is a file name, not a parse error', () => {
+    // What `git diff` prints for `한글.ts` with `core.quotepath` at its
+    // default. Read as JSON — which has no octal escape — this threw, and the
+    // throw took the whole diff with it: every file in it became "git diff
+    // failed", in every repository with one non-ASCII name in the change.
+    const diff = `diff --git "a/\\355\\225\\234\\352\\270\\200.ts" "b/\\355\\225\\234\\352\\270\\200.ts"
+index 1111111..2222222 100644
+--- "a/\\355\\225\\234\\352\\270\\200.ts"
++++ "b/\\355\\225\\234\\352\\270\\200.ts"
+@@ -1,0 +2 @@
++const b = 2;
+`;
+    const [file] = parseUnifiedDiff(diff);
+    assert.equal(file.file, '한글.ts');
+    assert.deepEqual(file.addedLines, [2]);
+  });
+
+  test('a quoted path keeps the characters git escaped for its own reasons', () => {
+    assert.equal(unquote('"a/say \\"hi\\".ts"'), 'a/say "hi".ts');
+    assert.equal(unquote('"a/back\\\\slash.ts"'), 'a/back\\slash.ts');
+    assert.equal(unquote('a/plain.ts'), 'a/plain.ts');
+  });
+
+  test('a deleted line that looks like a header is still a deletion', () => {
+    // `-- keep this` is an ordinary SQL comment; deleting it prints `--- keep
+    // this`, which was read as the diff's own `---` line and dropped. The
+    // deletion went uncounted, so the line that replaced it was reported as
+    // new code rather than as a rewrite of something that was there.
+    const diff = `diff --git a/schema.sql b/schema.sql
+--- a/schema.sql
++++ b/schema.sql
+@@ -3,1 +3,1 @@
+--- keep this
++-- keep that
+`;
+    const [file] = parseUnifiedDiff(diff);
+    assert.equal(file.file, 'schema.sql');
+    assert.equal(file.deletedLines, 1);
+    assert.deepEqual(file.addedLines, [3]);
+    assert.deepEqual(file.modifiedLines, [3], 'a replaced line is modified, not new');
+  });
+
+  test('an added line that looks like a header is still an added line', () => {
+    const diff = `diff --git a/notes.md b/notes.md
+--- a/notes.md
++++ b/notes.md
+@@ -1,0 +2,2 @@
++++ b/somewhere/else.ts
++rename to elsewhere.ts
+`;
+    const [file] = parseUnifiedDiff(diff);
+    assert.equal(file.file, 'notes.md', 'the content of a file cannot rename it');
+    assert.deepEqual(file.addedLines, [2, 3]);
   });
 });
 

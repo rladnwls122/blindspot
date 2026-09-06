@@ -24,7 +24,11 @@ export interface GitContext {
 }
 
 async function git(cwd: string, args: string[]): Promise<string> {
-  const { stdout } = await run('git', args, { cwd, maxBuffer: MAX_BUFFER, windowsHide: true });
+  // `core.quotepath` is on by default and escapes every non-ASCII byte of a
+  // path into octal. The parser can read that back, but a path that arrives as
+  // itself is a path nothing has to un-escape.
+  const argv = ['-c', 'core.quotepath=false', ...args];
+  const { stdout } = await run('git', argv, { cwd, maxBuffer: MAX_BUFFER, windowsHide: true });
   return stdout;
 }
 

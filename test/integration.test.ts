@@ -319,6 +319,35 @@ describe('cli against a real repository', () => {
     fs.rmSync(path.join(repo, 'src/whole.ts'));
   });
 
+  test('a file whose name is not ASCII is measured like any other', () => {
+    // git quotes and octal-escapes such a path by default. Reading that back
+    // as JSON threw, and the throw was not confined to the file: the whole
+    // diff failed, so a repository with one Korean file name in the change
+    // reported nothing at all.
+    const utf8 = fs.mkdtempSync(path.join(os.tmpdir(), 'blindspot-utf8-'));
+    try {
+      git(['init', '-q', '-b', 'main'], utf8);
+      git(['config', 'user.email', 'test@example.com'], utf8);
+      git(['config', 'user.name', 'Test'], utf8);
+      git(['config', 'commit.gpgsign', 'false'], utf8);
+      const name = '한글 파일.ts';
+      fs.writeFileSync(path.join(utf8, name), 'const a = 1;\n');
+      git(['add', '.'], utf8);
+      git(['commit', '-q', '-m', 'initial'], utf8);
+
+      fs.writeFileSync(path.join(utf8, name), 'const a = 2;\nconst b = 3;\n');
+      const { stdout } = blindspot(['check', '--json'], utf8);
+      const report = JSON.parse(stdout) as DiffReport;
+      assert.deepEqual(
+        report.files.map((f) => f.file),
+        [name],
+      );
+      assert.equal(report.totalChangedLines, 2);
+    } finally {
+      fs.rmSync(utf8, { recursive: true, force: true });
+    }
+  });
+
   test('outside a git repository it says so and does not crash', () => {
     const plain = fs.mkdtempSync(path.join(os.tmpdir(), 'blindspot-nogit-'));
     try {
