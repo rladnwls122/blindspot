@@ -67,6 +67,7 @@ let panelOwner: Controller | undefined;
 const COMMAND_IDS = [
   'blindspot.showReport',
   'blindspot.reviewBlindspot',
+  'blindspot.previousBlindspot',
   'blindspot.switchMode',
   'blindspot.toggleMode',
   'blindspot.selectBase',
@@ -85,7 +86,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // completely ordinary thing to do; both change what there is to track.
     vscode.workspace.onDidChangeWorkspaceFolders(() => void tryStart(context)),
     // The surfaces that exist once follow the file you are looking at.
-    vscode.window.onDidChangeActiveTextEditor(() => pickUiOwner()),
+    vscode.window.onDidChangeActiveTextEditor(() => {
+      pickUiOwner();
+      updateEditorContext();
+    }),
   );
   await tryStart(context);
 }
@@ -132,6 +136,9 @@ async function tryStart(context: vscode.ExtensionContext): Promise<boolean> {
     return false;
   }
   pickUiOwner();
+  // The first report is already built by now, and the controllers are only in
+  // the map from this point on — so the editor menus are wrong until this runs.
+  updateEditorContext();
   return true;
 }
 
@@ -174,6 +181,25 @@ function pickUiOwner(): void {
     all.find((c) => c.hasGit) ??
     all[0];
   claimUi(next);
+}
+
+/**
+ * Context keys for the editor's own menus: whether the file on screen is one
+ * Blindspot measures, and whether it still has unread lines in it.
+ *
+ * A menu item that appears on every file in every window is noise, and the
+ * title-bar button in particular has to earn its place — so it only shows
+ * while there is something in that file left to mark read.
+ */
+function updateEditorContext(): void {
+  const uri = vscode.window.activeTextEditor?.document.uri;
+  const owner = controllerFor(uri);
+  void vscode.commands.executeCommand('setContext', 'blindspot.activeFileTracked', !!owner);
+  void vscode.commands.executeCommand(
+    'setContext',
+    'blindspot.activeFileUnread',
+    !!owner && !!uri && owner.hasUnread(uri),
+  );
 }
 
 /** Give one controller the single-instance surfaces, taking them off the last. */
@@ -242,7 +268,8 @@ class Controller implements vscode.Disposable {
   private targets: FileDiff[] = [];
   private refreshTimer: NodeJS.Timeout | undefined;
   private saveTimer: NodeJS.Timeout | undefined;
-  private refreshing = false;
+  /** The rebuild currently running, so concurrent callers wait on one. */
+  private inFlight: Promise<DiffReport | null> | null = null;
   private lastRefreshError = '';
   private disposed = false;
   private windowFocused = vscode.window.state.focused;
@@ -433,13 +460,27 @@ class Controller implements vscode.Disposable {
     return this.refresh();
   }
 
+  /**
+   * Rebuild the report. A caller arriving while one is already running joins
+   * that run instead of being handed the previous answer: pressing
+   * `Blindspot: Refresh` a moment after a tick started used to return the stale
+   * report immediately, so the command looked like it had done nothing.
+   */
   async refresh(): Promise<DiffReport | null> {
-    if (this.disposed || this.refreshing) return this.report;
+    if (this.disposed) return this.report;
+    if (!this.inFlight) {
+      this.inFlight = this.rebuild().finally(() => {
+        this.inFlight = null;
+      });
+    }
+    return this.inFlight;
+  }
+
+  private async rebuild(): Promise<DiffReport | null> {
     if (!this.setting('enabled', true)) {
       this.showDisabled();
       return null;
     }
-    this.refreshing = true;
     try {
       let { report, targets, sources } = await this.measure(this.targetMode());
       // "auto" has to mean auto. A clean tree has no diff to review, and a
@@ -466,6 +507,9 @@ class Controller implements vscode.Disposable {
           ReportPanel.active.update({ report, data: pageData(targets, sources, this.cfg, this.panelSettings()) });
         }
       }
+      // A file goes from unread to read while it is on screen, so the button
+      // that offers to mark it read has to follow the report, not only focus.
+      updateEditorContext();
       return this.report;
     } catch (err) {
       console.error('[blindspot] refresh failed', err);
@@ -477,8 +521,6 @@ class Controller implements vscode.Disposable {
         void vscode.window.showWarningMessage(`Blindspot: ${message}`);
       }
       return this.report;
-    } finally {
-      this.refreshing = false;
     }
   }
 
@@ -649,6 +691,13 @@ class Controller implements vscode.Disposable {
     return this.relativePath(uri) !== null;
   }
 
+  /** Whether the live report still has unread lines in this document. */
+  hasUnread(uri: vscode.Uri): boolean {
+    const rel = this.relativePath(uri);
+    if (!rel || !this.report) return false;
+    return this.report.files.some((f) => f.file === rel && f.unseenLines > 0);
+  }
+
   get rootPath(): string {
     return this.root;
   }
@@ -681,7 +730,8 @@ class Controller implements vscode.Disposable {
 
     push('blindspot.showReport', () => this.showPanel(true));
 
-    push('blindspot.reviewBlindspot', () => this.reviewNext());
+    push('blindspot.reviewBlindspot', () => this.review(1));
+    push('blindspot.previousBlindspot', () => this.review(-1));
     push('blindspot.refresh', () => this.refresh());
 
     push('blindspot.switchMode', () => this.switchMode());
@@ -923,7 +973,7 @@ class Controller implements vscode.Disposable {
         await this.openAt(m.file, m.line, m.line);
         return;
       case 'reviewNext':
-        await this.reviewNext();
+        await this.review(1);
         return;
       case 'refresh':
         await this.refresh();
@@ -1010,7 +1060,7 @@ class Controller implements vscode.Disposable {
     await this.refresh();
   }
 
-  private async reviewNext(): Promise<void> {
+  private async review(step: 1 | -1): Promise<void> {
     await this.refresh();
     this.navigator.sync(this.report);
     if (this.navigator.remaining === 0) {
@@ -1023,7 +1073,7 @@ class Controller implements vscode.Disposable {
     }
     // Jumping to a blindspot must not be what marks it as read.
     this.tracker.suppressCaretCredit(800);
-    const hunk = this.navigator.advance();
+    const hunk = this.navigator.advance(step);
     if (!hunk) return;
     try {
       await this.navigator.reveal(hunk);
@@ -1106,7 +1156,7 @@ class Controller implements vscode.Disposable {
     // Either action is about the diff; the panel and the navigator follow the
     // mode, so the mode follows the commit.
     if (live.mode !== 'diff') await this.setMode('diff');
-    if (choice === 'Review Blindspot') await this.reviewNext();
+    if (choice === 'Review Blindspot') await this.review(1);
     else await this.showPanel(false);
   }
 

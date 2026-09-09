@@ -64,12 +64,12 @@ Usage
                                  leaves the repository with the commit
 
 Options
-  --staged                measure the staged tree (what the commit will contain)
+  -s, --staged            measure the staged tree (what the commit will contain)
   --base <ref>            diff against <ref> instead of HEAD
   --min-coverage <n>      fail below this coverage percentage (implies --enforce)
   --max-critical <n>      fail above this many unread critical/high-risk lines
   --enforce               exit 1 when thresholds are not met (default: warn only)
-  --json                  machine-readable output
+  -j, --json              machine-readable output
   --trailer               print only the commit trailer line (nothing when there
                           is nothing to measure)
   --list                  with forget: list the paths you have forgotten
@@ -79,6 +79,50 @@ Options
   -v, --version           print the version
   -h, --help              this message
 `;
+
+/**
+ * What a usage mistake prints. Forty lines of help for one mistyped letter
+ * buries the sentence that says what was wrong, so the full text is a request
+ * (`--help`) rather than a punishment.
+ */
+function usage(error: string): string {
+  return (
+    `blindspot: ${error}\n\n` +
+    `Usage: blindspot [${COMMANDS.filter((c) => c !== 'help' && c !== 'version').join('|')}] [options]\n` +
+    `Run \`blindspot --help\` for the full list.\n`
+  );
+}
+
+/**
+ * The command the caller probably meant. Two edits is a typo; three is a
+ * different word, and guessing at that point is worse than saying nothing.
+ */
+function nearestCommand(given: string): string | null {
+  let best: string | null = null;
+  let bestDistance = 3;
+  for (const candidate of COMMANDS) {
+    const d = editDistance(given, candidate);
+    if (d < bestDistance) {
+      bestDistance = d;
+      best = candidate;
+    }
+  }
+  return best;
+}
+
+function editDistance(a: string, b: string): number {
+  // One row of the Levenshtein matrix, kept because the words are tiny.
+  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const row = [i];
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      row[j] = Math.min(row[j - 1] + 1, prev[j] + 1, prev[j - 1] + cost);
+    }
+    prev = row;
+  }
+  return prev[b.length];
+}
 
 /** Version from the installed package.json, whichever layout we are running in. */
 function version(): string {
@@ -99,7 +143,7 @@ export async function main(argv: string[]): Promise<number> {
     // Exit non-zero. A mistyped flag means the caller is not measuring what it
     // thinks it is, and reporting coverage anyway would be a wrong answer
     // delivered confidently.
-    process.stderr.write(`blindspot: ${args.error}\n\n${HELP}`);
+    process.stderr.write(usage(args.error));
     return 2;
   }
   if (args.command === 'version') {
@@ -116,7 +160,11 @@ export async function main(argv: string[]): Promise<number> {
 
   const ctx = await findGitContext(process.cwd());
   if (!ctx) {
-    process.stderr.write('blindspot: not a git repository\n');
+    // There is still something to measure here — reading needs a folder, not a
+    // repository — and the person who typed `check` has no way to know that.
+    process.stderr.write(
+      'blindspot: not a git repository — `blindspot read` measures what you have read in a plain folder\n',
+    );
     return args.enforce ? 1 : 0;
   }
 
@@ -346,7 +394,7 @@ async function forgetCommand(args: Args): Promise<number> {
   }
 
   if (args.target === null) {
-    process.stderr.write(`blindspot: forget needs a path\n\n${HELP}`);
+    process.stderr.write(usage('forget needs a path — `blindspot forget vendor/`'));
     return 2;
   }
   const target = relativeTarget(ws.root, args.target);
@@ -517,9 +565,11 @@ function parseArgs(argv: string[]): Args {
   for (let i = 0; i < rest.length; i++) {
     const a = rest[i];
     switch (a) {
+      case '-s':
       case '--staged':
         args.staged = true;
         break;
+      case '-j':
       case '--json':
         args.json = true;
         break;
@@ -580,7 +630,10 @@ function parseArgs(argv: string[]): Args {
   }
 
   if (!COMMANDS.includes(args.command)) {
-    args.error ??= `unknown command ${args.command}`;
+    const near = nearestCommand(args.command);
+    args.error ??= near
+      ? `unknown command ${args.command} — did you mean \`blindspot ${near}\`?`
+      : `unknown command ${args.command}`;
   }
   if (args.trailer && args.json) {
     // Two output formats for one stream: the hook would paste JSON into a

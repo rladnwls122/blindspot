@@ -36,9 +36,12 @@ export class Navigator {
    * Step to the next hunk without opening it. Kept separate from `reveal` so
    * the caller can say which file failed to open when it does.
    */
-  advance(): BlindspotHunk | null {
-    if (this.queue.length === 0) return null;
-    this.index = (this.index + 1) % this.queue.length;
+  advance(step: 1 | -1 = 1): BlindspotHunk | null {
+    const n = this.queue.length;
+    if (n === 0) return null;
+    // The cursor starts before the first hunk, so a first step forward lands on
+    // the worst one and a first step back wraps round to the least bad.
+    this.index = this.index < 0 ? (step === 1 ? 0 : n - 1) : (this.index + step + n) % n;
     return this.queue[this.index];
   }
 

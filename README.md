@@ -26,8 +26,8 @@ itself, build a `.vsix` and install that:
 
 ```bash
 npm install
-npm run package                              # produces blindspot-0.4.0.vsix
-code --install-extension blindspot-0.4.0.vsix
+npm run package                              # produces blindspot-0.4.1.vsix
+code --install-extension blindspot-0.4.1.vsix
 ```
 
 Open a git repository and coverage appears in the status bar, and in the
@@ -43,12 +43,18 @@ separately; the status bar and the sidebar follow the one you are reading in.
 | `Blindspot: Switch Mode (Diff / Reading)` | what to measure |
 | `Blindspot: Choose What the Diff Is Measured Against` | last review / `baseRef` / any ref |
 | `Blindspot: Review Blindspot` | jump to the next unread hunk, worst risk first |
+| `Blindspot: Previous Unread Hunk` | back one, same queue |
 | `Blindspot: Mark File As Reviewed` | "I read this in the GitHub UI" (also from the sidebar) |
 | `Blindspot: Stop Measuring This File` | take a file you opened by accident out of the denominator |
 | `Blindspot: Complete Review` | baseline to HEAD — reviewed up to here |
 | `Blindspot: Install pre-commit Hook` | print the card at commit time |
 | `Blindspot: Toggle Unread Line Markers` | gutter markers |
 | `Blindspot: Reset Review Evidence` | start over |
+
+Three of them have a default shortcut: `Ctrl+Alt+U` walks to the next unread
+hunk, `Ctrl+Alt+Shift+U` back one, and `Ctrl+Alt+B` opens the report (`Cmd`
+instead of `Ctrl` on macOS). The same three are on the sidebar title bar, and
+the editor right-click menu carries them for the file you are looking at.
 
 ### CLI
 
@@ -409,7 +415,7 @@ validated.
 
 ## Status
 
-v0.4.0 — the two modes, the report panel, the sidebar, the mouse sensor,
+v0.4.1 — the two modes, the report panel, the sidebar, the mouse sensor,
 interacted lines, pace, the commit trailer, `forget`, and the line-shape model
 in full. Every folder of a multi-root workspace is tracked as of this version;
 before it, only the first one was.

@@ -315,8 +315,8 @@ VSCodium, Cursor, Windsurf, Gitpod가 확장을 받아 가는 곳입니다. VS C
 
 ```bash
 npm install
-npm run package                              # blindspot-0.4.0.vsix 생성
-code --install-extension blindspot-0.4.0.vsix
+npm run package                              # blindspot-0.4.1.vsix 생성
+code --install-extension blindspot-0.4.1.vsix
 ```
 
 git 저장소가 열려 있으면 바로 상태 표시줄과 Activity Bar의 Blindspot 뷰에
@@ -350,12 +350,18 @@ npm run icon       # media/icon.png 재생성
 | `Blindspot: Switch Mode (Diff / Reading)` | 무엇을 잴지 |
 | `Blindspot: Choose What the Diff Is Measured Against` | 마지막 리뷰 / `baseRef` / 임의의 ref |
 | `Blindspot: Review Blindspot` | 안 읽은 hunk로 점프, 위험도 높은 순 |
+| `Blindspot: Previous Unread Hunk` | 같은 순서로 한 칸 뒤로 |
 | `Blindspot: Mark File As Reviewed` | "이건 GitHub UI에서 읽었다" (사이드바에서도) |
 | `Blindspot: Stop Measuring This File` | 실수로 연 파일을 분모에서 뺀다 (사이드바 휴지통) |
 | `Blindspot: Complete Review` | 기준을 HEAD로 — 여기까지는 봤다 |
 | `Blindspot: Install pre-commit Hook` | 커밋 시점에 카드 출력 |
 | `Blindspot: Toggle Unread Line Markers` | 거터 마커 |
 | `Blindspot: Reset Review Evidence` | 처음부터 다시 |
+
+이 중 셋에는 기본 단축키가 있습니다. `Ctrl+Alt+U` 는 다음 안 읽은 hunk로,
+`Ctrl+Alt+Shift+U` 는 한 칸 뒤로, `Ctrl+Alt+B` 는 리포트를 엽니다 (macOS에서는
+`Ctrl` 대신 `Cmd`). 같은 셋이 사이드바 제목 줄에 있고, 지금 보고 있는 파일에
+대해서는 에디터 우클릭 메뉴에도 있습니다.
 
 ### CLI
 
@@ -462,7 +468,7 @@ demo/            스크립트 세션을 실제 모델로 재생
 
 ## 상태
 
-v0.4.0 — 두 모드, 리포트 패널과 사이드바, 마우스 센서, interacted/pace,
+v0.4.1 — 두 모드, 리포트 패널과 사이드바, 마우스 센서, interacted/pace,
 커밋 트레일러, `forget`, 그리고 라인 모양 모델 전체가 `main`에 들어가 있습니다.
 멀티루트 워크스페이스의 모든 폴더를 추적하는 것은 이 버전부터이고, 그 전에는
 첫 폴더 하나만 추적했습니다. 무엇이 바뀌었는지는

@@ -2,8 +2,31 @@
 
 ## [Unreleased]
 
+## [0.4.1] — 2026-09-09
+
+The 0.4.0 line and the report-panel line met: this release is the merge of the
+two, so everything listed below ships together — the two modes, the report
+panel, the sidebar, the mouse sensor and multi-root tracking alongside the
+commit trailer, `forget` and the line-shape model. On top of that, a pass over
+the parts a person has to reach for.
+
 ### Added
 
+- **Default shortcuts.** `Ctrl+Alt+U` walks to the next unread hunk,
+  `Ctrl+Alt+Shift+U` back one, `Ctrl+Alt+B` opens the report (`Cmd` on macOS).
+  Twelve commands reachable only by typing their name into the palette is a
+  review loop nobody runs twice.
+- **`Blindspot: Previous Unread Hunk`.** The walk only went one way and
+  wrapped, so stepping back meant going all the way round. From a standing
+  start it lands on the last hunk, the same place stepping forward from the
+  end does.
+- **The editor's own menus.** A title-bar button offering to mark the file
+  reviewed, and the three per-file commands on the right-click menu — both
+  gated on context keys (`blindspot.activeFileUnread`,
+  `blindspot.activeFileTracked`), so they appear where they would do something
+  and nowhere else.
+- **A Getting Started walkthrough**, four steps: the report, the review loop,
+  the two modes, and the commit-time warning.
 - **Two modes, switchable.** `Diff` measures the lines you changed; `Reading`
   measures every line of every file you open. The switch is
   `Blindspot: Switch Mode`, `Blindspot: Toggle Diff / Reading Mode`, and the
@@ -43,6 +66,15 @@
 
 ### Changed
 
+- `Blindspot: Refresh` pressed while a tick was already running used to return
+  the previous report immediately, so the command looked like it had done
+  nothing. Concurrent callers now join the run already in flight.
+- A CLI usage mistake prints the one sentence that says what was wrong and a
+  pointer to `--help`, instead of forty lines of help around it. An unknown
+  command suggests the nearest real one: `blindspot chekc` → `check`.
+- `blindspot check` outside a repository now says what does work there —
+  `blindspot read` measures reading in a plain folder.
+- `-s` and `-j` are accepted for `--staged` and `--json`.
 - `Blindspot: Show Review Report` now opens the interactive page that used to
   be the demo (`demo/index.html`), fed the evidence of your own session: the
   threshold slider re-judges every line of the current target in the browser,

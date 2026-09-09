@@ -44,6 +44,10 @@ interface Stub {
   panelMessage: ((m: any) => any) | undefined;
   /** Absolute paths the editor was asked to show, in order. */
   opened: string[];
+  /** Transient status-bar lines, which is where a jump says where it landed. */
+  statusMessages: string[];
+  /** Context keys set through `setContext`, which the editor menus key on. */
+  contexts: Record<string, unknown>;
 }
 
 let stub: Stub;
@@ -135,7 +139,10 @@ function makeVscode(): any {
         return { dispose() {}, description: undefined, badge: undefined, message: undefined };
       },
       showInputBox: () => Promise.resolve(undefined),
-      setStatusBarMessage: () => disposable(() => {}),
+      setStatusBarMessage: (m: string) => {
+        stub.statusMessages.push(m);
+        return disposable(() => {});
+      },
       showTextDocument: (doc: any) => {
         stub.opened.push(doc.uri.fsPath);
         return Promise.resolve({ document: doc, revealRange: () => {}, selection: undefined });
@@ -174,7 +181,15 @@ function makeVscode(): any {
           if (stub.commands.get(id) === fn) stub.commands.delete(id);
         });
       },
-      executeCommand: (id: string, ...args: any[]) => stub.commands.get(id)?.(...args),
+      executeCommand: (id: string, ...args: any[]) => {
+        // `setContext` is VS Code's own, not one the extension registers, and
+        // it is what decides whether the editor menus show at all.
+        if (id === 'setContext') {
+          stub.contexts[args[0] as string] = args[1];
+          return Promise.resolve(undefined);
+        }
+        return stub.commands.get(id)?.(...args);
+      },
     },
     Uri: {
       file: (p: string) => ({ fsPath: p, toString: () => `file://${p}` }),
@@ -263,6 +278,8 @@ describe('activation outside a git repository', { concurrency: 1 }, () => {
       allowWebview: false,
       panelMessage: undefined,
       opened: [],
+      statusMessages: [],
+      contexts: {},
     };
   });
   afterEach(teardown);
@@ -352,6 +369,8 @@ describe('activation inside a git repository', { concurrency: 1 }, () => {
       allowWebview: false,
       panelMessage: undefined,
       opened: [],
+      statusMessages: [],
+      contexts: {},
     };
   });
   afterEach(teardown);
@@ -465,6 +484,88 @@ describe('activation inside a git repository', { concurrency: 1 }, () => {
     // was still alive. Reading has something to say, and `auto` must reach it.
     assert.equal(stub.statusBar.visible, true, 'the status bar must not vanish on a clean tree');
     assert.match(stub.statusBar.text, /read$/, `reading mode, not an empty diff: ${stub.statusBar.text}`);
+    assert.deepEqual(stub.errors, []);
+  });
+
+  test('the review loop runs both ways, and starts at the worst hunk either way', async () => {
+    // Two unread hunks in one file. Forward from a standing start lands on the
+    // first of them; backward from a standing start lands on the last, rather
+    // than on the second-to-last, which is what `(index - 1 + n) % n` gives
+    // when the cursor has not moved yet.
+    const repo = tempDir();
+    execFileSync('git', ['init', '-q'], { cwd: repo });
+    execFileSync('git', ['config', 'user.email', 't@t'], { cwd: repo });
+    execFileSync('git', ['config', 'user.name', 'T'], { cwd: repo });
+    const base = Array.from({ length: 40 }, (_, i) => `const v${i} = ${i};`);
+    fs.writeFileSync(path.join(repo, 'a.ts'), base.join('\n') + '\n');
+    execFileSync('git', ['add', '-A'], { cwd: repo });
+    execFileSync('git', ['commit', '-qm', 'first'], { cwd: repo });
+
+    const changed = [...base];
+    changed[2] = 'const v2 = 222;';
+    changed[30] = 'const v30 = 3030;';
+    fs.writeFileSync(path.join(repo, 'a.ts'), changed.join('\n') + '\n');
+
+    stub.folders = [{ uri: { fsPath: repo } }];
+    stub.settings['mode'] = 'diff';
+    await extension.activate(fakeContext());
+
+    const landed = () => {
+      const line = stub.statusMessages.filter((m) => /^(?:⚠️ )?Blindspot \d+ of/.test(m)).at(-1);
+      return line ?? '';
+    };
+
+    await stub.commands.get('blindspot.reviewBlindspot')!();
+    assert.match(landed(), /^(?:⚠️ )?Blindspot 1 of 2\b/, `forward: ${landed()}`);
+    const first = landed();
+
+    await stub.commands.get('blindspot.previousBlindspot')!();
+    assert.match(landed(), /^(?:⚠️ )?Blindspot 2 of 2\b/, `backward wraps: ${landed()}`);
+
+    await stub.commands.get('blindspot.previousBlindspot')!();
+    assert.equal(landed(), first, 'and back again to where the walk started');
+    assert.deepEqual(stub.errors, []);
+  });
+
+  test('the editor menus only offer what the file on screen actually needs', async () => {
+    // `blindspot.activeFileUnread` gates the title-bar button and
+    // `blindspot.activeFileTracked` the right-click items. A button offering to
+    // mark a fully-read file reviewed, on every file in every window, is the
+    // kind of chrome people turn off.
+    const repo = tempDir();
+    execFileSync('git', ['init', '-q'], { cwd: repo });
+    execFileSync('git', ['config', 'user.email', 't@t'], { cwd: repo });
+    execFileSync('git', ['config', 'user.name', 'T'], { cwd: repo });
+    const base = ['const a = 1;', 'const b = 2;'];
+    fs.writeFileSync(path.join(repo, 'a.ts'), base.join('\n') + '\n');
+    execFileSync('git', ['add', '-A'], { cwd: repo });
+    execFileSync('git', ['commit', '-qm', 'first'], { cwd: repo });
+    fs.writeFileSync(path.join(repo, 'a.ts'), ['const a = 11;', 'const b = 2;'].join('\n') + '\n');
+
+    const doc = (fsPath: string) => ({
+      uri: { fsPath, scheme: 'file' },
+      lineCount: 2,
+      lineAt: () => ({ text: 'const a = 11;' }),
+    });
+
+    stub.folders = [{ uri: { fsPath: repo } }];
+    stub.settings['mode'] = 'diff';
+    stub.activeEditor = { document: doc(path.join(repo, 'a.ts')) };
+    await extension.activate(fakeContext());
+    await stub.commands.get('blindspot.refresh')!();
+
+    assert.equal(stub.contexts['blindspot.activeFileTracked'], true);
+    assert.equal(stub.contexts['blindspot.activeFileUnread'], true, 'the change is unread');
+
+    // Marking it reviewed takes the button away; nothing is left to mark.
+    await stub.commands.get('blindspot.markFileReviewed')!();
+    assert.equal(stub.contexts['blindspot.activeFileUnread'], false);
+
+    // A file in no tracked root gets neither.
+    stub.activeEditor = { document: doc(path.join(tempDir(), 'elsewhere.ts')) };
+    for (const fn of stub.activeEditorListeners) fn();
+    assert.equal(stub.contexts['blindspot.activeFileTracked'], false);
+    assert.equal(stub.contexts['blindspot.activeFileUnread'], false);
     assert.deepEqual(stub.errors, []);
   });
 

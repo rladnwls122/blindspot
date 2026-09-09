@@ -2,7 +2,7 @@
   "name": "blindspot",
   "displayName": "Blindspot",
   "description": "Tracks which lines of your diff your eyes have actually rested on, and tells you what you never read before you commit.",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "license": "MIT",
   "publisher": "rladnwls122",
   "icon": "media/icon.png",
@@ -55,7 +55,12 @@
       {
         "command": "blindspot.reviewBlindspot",
         "title": "Blindspot: Review Blindspot (jump to next unread hunk)",
-        "icon": "$(debug-step-over)"
+        "icon": "$(arrow-down)"
+      },
+      {
+        "command": "blindspot.previousBlindspot",
+        "title": "Blindspot: Previous Unread Hunk",
+        "icon": "$(arrow-up)"
       },
       {
         "command": "blindspot.switchMode",
@@ -252,19 +257,48 @@
           "group": "navigation@1"
         },
         {
-          "command": "blindspot.reviewBlindspot",
+          "command": "blindspot.previousBlindspot",
           "when": "view == blindspot.files",
           "group": "navigation@2"
         },
         {
-          "command": "blindspot.showReport",
+          "command": "blindspot.reviewBlindspot",
           "when": "view == blindspot.files",
           "group": "navigation@3"
         },
         {
-          "command": "blindspot.refresh",
+          "command": "blindspot.showReport",
           "when": "view == blindspot.files",
           "group": "navigation@4"
+        },
+        {
+          "command": "blindspot.refresh",
+          "when": "view == blindspot.files",
+          "group": "navigation@5"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "blindspot.markFileReviewed",
+          "when": "blindspot.activeFileUnread",
+          "group": "navigation"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "blindspot.reviewBlindspot",
+          "when": "blindspot.activeFileTracked",
+          "group": "blindspot@1"
+        },
+        {
+          "command": "blindspot.markFileReviewed",
+          "when": "blindspot.activeFileTracked",
+          "group": "blindspot@2"
+        },
+        {
+          "command": "blindspot.forgetFile",
+          "when": "blindspot.activeFileTracked",
+          "group": "blindspot@3"
         }
       ],
       "scm/title": [
@@ -322,7 +356,57 @@
           "visibility": "visible"
         }
       ]
-    }
+    },
+    "keybindings": [
+      {
+        "command": "blindspot.reviewBlindspot",
+        "key": "ctrl+alt+u",
+        "mac": "cmd+alt+u"
+      },
+      {
+        "command": "blindspot.previousBlindspot",
+        "key": "ctrl+alt+shift+u",
+        "mac": "cmd+alt+shift+u"
+      },
+      {
+        "command": "blindspot.showReport",
+        "key": "ctrl+alt+b",
+        "mac": "cmd+alt+b"
+      }
+    ],
+    "walkthroughs": [
+      {
+        "id": "blindspot.gettingStarted",
+        "title": "Blindspot: measure what you actually read",
+        "description": "Four steps: see the number, walk the unread code, tell it what to measure, and get told before you commit.",
+        "steps": [
+          {
+            "id": "blindspot.step.report",
+            "title": "Open the report",
+            "description": "The status bar shows review coverage while you work. Click it, or press the shortcut, for the full report — the blindspot percentage, the worst unread hunk, and the slider that decides what counts as read.\n[Show Review Report](command:blindspot.showReport)",
+            "media": { "markdown": "media/walkthrough/report.md" }
+          },
+          {
+            "id": "blindspot.step.navigate",
+            "title": "Walk the code you have not read",
+            "description": "Riskiest first. Each jump lands the hunk in the middle of the viewport, and reaching it is not what marks it read — your eyes are.\n[Jump to the next unread hunk](command:blindspot.reviewBlindspot)",
+            "media": { "markdown": "media/walkthrough/navigate.md" }
+          },
+          {
+            "id": "blindspot.step.mode",
+            "title": "Choose what is measured",
+            "description": "Diff mode measures the lines you changed. Reading mode measures every line of every file you open, and needs no repository at all.\n[Switch Mode](command:blindspot.switchMode)",
+            "media": { "markdown": "media/walkthrough/mode.md" }
+          },
+          {
+            "id": "blindspot.step.hook",
+            "title": "Be told before you commit",
+            "description": "The pre-commit hook prints the card at commit time. It warns and exits 0 — a review tool that blocks commits gets uninstalled within a week.\n[Install pre-commit Hook](command:blindspot.installGitHook)",
+            "media": { "markdown": "media/walkthrough/hook.md" }
+          }
+        ]
+      }
+    ]
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
