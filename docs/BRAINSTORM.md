@@ -123,6 +123,11 @@ PLAN v0.3 항목. 검증 실험(버그 수정 커밋 → 원인 커밋 → 그 �
 유일한 데이터 소스. `prepare-commit-msg` 훅 + `blindspot check --trailer` 한 줄.
 1번과 함께 가야 값이 있다.
 
+**→ 됨** (`blindspot install-hook --trailer`, CLI 옵트인). 형식은 위 그대로에서
+`interacted-only`를 뺀 `Blindspot: 36% (66/182 lines unread)` — 한 줄에 숫자를
+더 실을수록 파싱하는 쪽이 깨지기 쉽고, interacted 수는 1번의 로그가 생기면 거기서
+나온다. 1번은 아직.
+
 ### 3. 터미널/패널 포커스 (빈틈 4)
 
 안정 API에 "에디터가 텍스트 포커스를 가졌는가"가 없다. 우회 후보:
@@ -130,17 +135,39 @@ PLAN v0.3 항목. 검증 실험(버그 수정 커밋 → 원인 커밋 → 그 �
 가능), `WindowState.active`(1.87+; typings 상향 필요). 확실한 답은 없으므로
 README 한계에 적어 두었다.
 
+### 3b. 경로 표기 — 됨
+
+한 디렉터리에 이름이 둘 이상 있을 수 있다. root는 git이 주고(심볼릭 링크 해소,
+Windows 긴 이름), 파일 경로는 에디터가 준다(연 그대로). 심볼릭 링크·junction·8.3
+단축 이름으로 연 워크스페이스에서는 둘이 어긋나 모든 키가 `..`로 시작했고, 확장은
+아무것도 추적하지 않으면서 아무 말도 하지 않았다 — "이 파일은 워크스페이스 밖"은
+정상적인 답이라서.
+
+`src/extension/paths.ts`의 `relativeKey` 하나로 모았다. tracker·controller·
+decorations가 각자 계산하던 것을 합친 것이기도 하다. 같은 규칙을 세 벌 두면 세 벌
+모두 같은 방식으로 틀린다.
+
 ### 4. diff 에디터 추적 (빈틈 8)
 
 `scheme: git` 문서의 visible range를 원본 파일 줄로 매핑. PLAN에서 "가장 큰
 구멍"이라 부른 것. 모드 작업과 별개의 큰 작업이라 이번엔 손대지 않았다.
 
-### 5. Reading 모드의 분모 관리
+### 5. Reading 모드의 분모 관리 — 됨
 
 실수로 연 3,000줄짜리 vendored 파일이 분모를 삼킨다. `untrack` 액션이 필요한데,
 열려 있는 문서는 다음 tick에 다시 ledger가 생기므로 "무시 목록"을 상태에 둬야 한다.
 스펙 §2의 `maxScopeFiles`와 같은 문제. 결정 필요: 무시 목록을 어디에(상태 vs
 설정) 둘 것인가.
+
+**→ 상태.** `state.json`의 `ignored`다. `.blindspot/config.json`은 커밋되고 팀
+전체에 대해 "무엇이 위험한가"를 정하는 파일인데, 이건 한 사람이 "나는 이걸 읽고
+있지 않다"고 말하는 것이다. 증거와 같은 종류의 사실이므로 증거 옆에 둔다.
+
+이름은 `untrack`이 아니라 **forget**이다. CONTEXT.md가 tracked를 피하는 단어로
+두었고, 실제로 하는 일이 증거 삭제라서 그 편이 정직하다. `blindspot forget <path>`,
+`--list`, `--undo <path>`, 그리고 에디터의 `Blindspot: Stop Measuring This File`과
+사이드바 인라인 휴지통. 열려 있는 파일도 다시 안 들어온다 — `tracker.key()`가
+forgotten 경로에 대해 null을 돌려주므로 ledger 자체가 생기지 않는다.
 
 ### 6. 초점 위치 편향 (빈틈 7)
 

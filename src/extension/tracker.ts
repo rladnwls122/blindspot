@@ -4,8 +4,8 @@ import { LineLedger, hasEvidence, type StoredLine } from '../core/ledger';
 import { isIgnored } from '../core/coverage';
 import { attentionNorm, focusLine } from '../core/attention';
 import { emptyActivity, type ActivityCounts, type LineEvidence, type Provenance } from '../core/types';
-import { STATE_VERSION, type AiRegions, type BlindspotState } from '../core/store';
-import { relativeToRoot } from './workspace';
+import { STATE_VERSION, isForgotten, type AiRegions, type BlindspotState } from '../core/store';
+import { relativeKey } from './paths';
 
 const TICK_MS = 250;
 /**
@@ -48,6 +48,8 @@ export class AttentionTracker implements vscode.Disposable {
   /** Last caret move, scroll, hover or edit. Screen time past `idleAfterMs` from here is idling. */
   private lastActivity = Date.now();
   private baseline: BlindspotState['baseline'] = null;
+  /** Paths the reader has told us not to measure. See `store.ts`. */
+  private ignored: string[] = [];
   /**
    * Where the mouse last came to rest, from the editor's hover requests. The
    * caret is where the last keyboard act happened; the pointer is where the
@@ -70,6 +72,7 @@ export class AttentionTracker implements vscode.Disposable {
     this.trackedMs = state.trackedMs;
     this.activity = { ...state.activity };
     this.baseline = state.baseline;
+    this.ignored = [...state.ignored];
     for (const [file, lines] of Object.entries(state.files)) {
       this.pending.set(file, lines);
     }
@@ -87,6 +90,7 @@ export class AttentionTracker implements vscode.Disposable {
       vscode.workspace.onDidChangeTextDocument((e) => this.onEdit(e)),
       vscode.window.onDidChangeVisibleTextEditors(() => this.views.clear()),
       vscode.workspace.onDidCloseTextDocument((doc) => this.views.delete(this.viewKey(doc))),
+      vscode.workspace.onDidRenameFiles((e) => this.onRenamed(e)),
     );
 
     this.timer = setInterval(() => this.tick(), TICK_MS);
@@ -109,30 +113,89 @@ export class AttentionTracker implements vscode.Disposable {
   private readonly pending = new Map<string, StoredLine[]>();
 
   private key(doc: vscode.TextDocument): string | null {
-    if (doc.uri.scheme !== 'file') return null;
-    const rel = relativeToRoot(this.ctx.root, doc.uri.fsPath);
-    if (!rel) return null;
-    if (isIgnored(rel, this.cfg.ignore)) return null;
+    const rel = this.relKey(doc.uri);
+    if (!rel || isIgnored(rel, this.cfg.ignore)) return null;
+    // A file the reader has forgotten stays forgotten while it is open, or the
+    // next tick would put it straight back into the denominator.
+    if (isForgotten(this.ignored, rel)) return null;
     return rel;
+  }
+
+  /** Repo-relative key for a URI, or null when it is not a file in this repository. */
+  private relKey(uri: vscode.Uri): string | null {
+    if (uri.scheme !== 'file') return null;
+    return relativeKey(this.ctx.root, uri.fsPath);
   }
 
   private viewKey(doc: vscode.TextDocument): string {
     return doc.uri.toString();
   }
 
-  /** Ledger for a document, anchoring persisted evidence on first touch. */
+  /**
+   * Ledger for a document, anchoring persisted evidence on first touch. A
+   * ledger that already exists is returned as is — unless evidence has since
+   * arrived under this name, which a rename does, in which case it is anchored
+   * to the text and folded in.
+   */
   private ledgerFor(doc: vscode.TextDocument, file: string): LineLedger {
     let ledger = this.ledgers.get(file);
-    if (ledger) return ledger;
+    if (ledger && !this.pending.has(file)) return ledger;
 
     const stored = this.pending.get(file);
+    this.pending.delete(file);
     const textLines = docLines(doc);
+    if (ledger) {
+      if (stored) ledger.mergeFrom(LineLedger.anchor(stored, textLines));
+      return ledger;
+    }
     ledger = stored ? LineLedger.anchor(stored, textLines) : new LineLedger();
     ledger.resize(doc.lineCount);
-    this.pending.delete(file);
     this.applyDeclaredAi(ledger, file);
     this.ledgers.set(file, ledger);
     return ledger;
+  }
+
+  private onRenamed(e: vscode.FileRenameEvent): void {
+    for (const { oldUri, newUri } of e.files) {
+      const from = this.relKey(oldUri);
+      const to = this.relKey(newUri);
+      if (from && to) this.followRename(from, to);
+    }
+  }
+
+  /**
+   * A file or folder changed its name. Its lines did not, and the evidence is
+   * about the lines, so it moves with them. Without this a renamed file came
+   * back entirely unread — evidence is keyed by path, and Reading mode lost
+   * the file altogether, however long had been spent in it.
+   */
+  followRename(from: string, to: string): void {
+    if (from === to) return;
+    for (const key of this.files()) {
+      if (key !== from && !key.startsWith(`${from}/`)) continue;
+      this.moveKey(key, to + key.slice(from.length));
+    }
+  }
+
+  private moveKey(from: string, to: string): void {
+    const ledger = this.ledgers.get(from);
+    const stored = this.pending.get(from);
+    if (!ledger && !stored) return;
+    this.ledgers.delete(from);
+    this.pending.delete(from);
+    if (ledger) {
+      const existing = this.ledgers.get(to);
+      if (existing) existing.mergeFrom(ledger);
+      else this.ledgers.set(to, ledger);
+    }
+    if (stored && stored.length > 0) {
+      // Reading done under the new name comes first, so it anchors ahead of
+      // the old. If the new name is already open this waits in `pending`:
+      // the next touch anchors it, and a snapshot in between carries it as is.
+      const own = this.pending.get(to);
+      this.pending.set(to, own ? [...own, ...stored] : stored);
+    }
+    this.markDirty();
   }
 
   private applyDeclaredAi(ledger: LineLedger, file: string): void {
@@ -363,13 +426,18 @@ export class AttentionTracker implements vscode.Disposable {
    * the report even though it is still on disk.
    */
   primeFromText(file: string, textLines: string[]): void {
-    if (this.ledgers.has(file)) return;
     const stored = this.pending.get(file);
     if (!stored) return;
-    const ledger = LineLedger.anchor(stored, textLines);
-    this.applyDeclaredAi(ledger, file);
-    this.ledgers.set(file, ledger);
     this.pending.delete(file);
+    const anchored = LineLedger.anchor(stored, textLines);
+    const existing = this.ledgers.get(file);
+    if (existing) {
+      // Evidence that reached this name after its ledger existed: a rename.
+      existing.mergeFrom(anchored);
+      return;
+    }
+    this.applyDeclaredAi(anchored, file);
+    this.ledgers.set(file, anchored);
   }
 
   /** Explicit user override: "I reviewed this elsewhere." */
@@ -393,6 +461,46 @@ export class AttentionTracker implements vscode.Disposable {
     this.markDirty();
   }
 
+  /**
+   * Drop everything recorded for a file, or for a folder and all of it, and
+   * return what went.
+   *
+   * Reading mode measures every file with evidence, so one vendored file
+   * opened by accident stays in the denominator for a month. This is the way
+   * back out, and it is honest about what it does: the evidence is deleted,
+   * not hidden, so the file simply has not been read here.
+   */
+  forget(target: string): string[] {
+    const prefix = target.replace(/\/+$/, '');
+    const gone: string[] = [];
+    for (const file of this.files()) {
+      if (file !== prefix && !file.startsWith(`${prefix}/`)) continue;
+      this.ledgers.delete(file);
+      this.pending.delete(file);
+      gone.push(file);
+    }
+    this.ignored = [
+      ...new Set([...this.ignored.filter((p) => p !== prefix && !p.startsWith(`${prefix}/`)), prefix]),
+    ].sort();
+    this.markDirty();
+    return gone.sort();
+  }
+
+  /** Undo a `forget`: measure this path again from now on. */
+  measureAgain(target: string): boolean {
+    const prefix = target.replace(/\/+$/, '');
+    const next = this.ignored.filter((p) => p !== prefix && !p.startsWith(`${prefix}/`));
+    if (next.length === this.ignored.length) return false;
+    this.ignored = next;
+    this.markDirty();
+    return true;
+  }
+
+  /** What the reader has asked not to be measured. */
+  get forgotten(): readonly string[] {
+    return this.ignored;
+  }
+
   reset(): void {
     this.ledgers.clear();
     this.pending.clear();
@@ -400,6 +508,7 @@ export class AttentionTracker implements vscode.Disposable {
     this.trackedMs = 0;
     this.activity = emptyActivity();
     this.baseline = null;
+    this.ignored = [];
     this.markDirty();
   }
 
@@ -413,7 +522,10 @@ export class AttentionTracker implements vscode.Disposable {
       const textLines = textFor(file);
       if (!textLines) continue;
       const serialized = ledger.serialize(textLines);
-      if (serialized.length > 0) files[file] = serialized;
+      // Evidence a rename moved here that nothing has anchored yet rides
+      // along behind the ledger's own, rather than being overwritten by it.
+      const carried = files[file] ?? [];
+      if (serialized.length + carried.length > 0) files[file] = [...serialized, ...carried];
     }
     return {
       version: STATE_VERSION,
@@ -422,6 +534,7 @@ export class AttentionTracker implements vscode.Disposable {
       trackedMs: this.trackedMs,
       activity: { ...this.activity },
       baseline: this.baseline,
+      ignored: [...this.ignored],
     };
   }
 

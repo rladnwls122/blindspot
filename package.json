@@ -2,7 +2,7 @@
   "name": "blindspot",
   "displayName": "Blindspot",
   "description": "Tracks which lines of your diff your eyes have actually rested on, and tells you what you never read before you commit.",
-  "version": "0.3.4",
+  "version": "0.4.0",
   "license": "MIT",
   "publisher": "rladnwls122",
   "icon": "media/icon.png",
@@ -78,6 +78,11 @@
         "command": "blindspot.markFileReviewed",
         "title": "Blindspot: Mark File As Reviewed",
         "icon": "$(check)"
+      },
+      {
+        "command": "blindspot.forgetFile",
+        "title": "Blindspot: Stop Measuring This File (forget its reading)",
+        "icon": "$(trash)"
       },
       {
         "command": "blindspot.resetSession",
@@ -273,6 +278,11 @@
           "command": "blindspot.markFileReviewed",
           "when": "view == blindspot.files && viewItem == file",
           "group": "inline"
+        },
+        {
+          "command": "blindspot.forgetFile",
+          "when": "view == blindspot.files && viewItem == file",
+          "group": "inline"
         }
       ],
       "commandPalette": [
@@ -336,5 +346,10 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/rladnwls122/blindspot.git"
-  }
+  },
+  "bugs": {
+    "url": "https://github.com/rladnwls122/blindspot/issues"
+  },
+  "homepage": "https://github.com/rladnwls122/blindspot#readme",
+  "qna": "https://github.com/rladnwls122/blindspot/issues"
 }

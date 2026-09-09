@@ -26,8 +26,8 @@ itself, build a `.vsix` and install that:
 
 ```bash
 npm install
-npm run package                              # produces blindspot-0.3.4.vsix
-code --install-extension blindspot-0.3.4.vsix
+npm run package                              # produces blindspot-0.4.0.vsix
+code --install-extension blindspot-0.4.0.vsix
 ```
 
 Open a git repository and coverage appears in the status bar, and in the
@@ -44,6 +44,7 @@ separately; the status bar and the sidebar follow the one you are reading in.
 | `Blindspot: Choose What the Diff Is Measured Against` | last review / `baseRef` / any ref |
 | `Blindspot: Review Blindspot` | jump to the next unread hunk, worst risk first |
 | `Blindspot: Mark File As Reviewed` | "I read this in the GitHub UI" (also from the sidebar) |
+| `Blindspot: Stop Measuring This File` | take a file you opened by accident out of the denominator |
 | `Blindspot: Complete Review` | baseline to HEAD — reviewed up to here |
 | `Blindspot: Install pre-commit Hook` | print the card at commit time |
 | `Blindspot: Toggle Unread Line Markers` | gutter markers |
@@ -55,14 +56,27 @@ separately; the status bar and the sidebar follow the one you are reading in.
 blindspot check --staged            # print the card for what you are about to commit
 blindspot report                    # per-file table plus Read / Focus / Activity / Pace
 blindspot read                      # what Reading mode sees: opened files, whole. No git needed
+blindspot read src/core             # just one file or folder of it
+blindspot forget vendor/            # out of the denominator: evidence deleted, and kept out
+blindspot forget --list             # what you have forgotten; --undo <path> reverses it
 blindspot check --min-coverage 70   # exit 1 below 70% (for CI or a strict hook)
 blindspot check --json              # machine-readable
+blindspot check --staged --trailer  # the commit trailer line: Blindspot: 36% (66/182 lines unread)
+blindspot install-hook --trailer    # also install prepare-commit-msg, which writes it on every commit (opt-in)
 blindspot --version                 # the version
 ```
 
 The installed pre-commit hook **warns and exits 0** by default. A review tool
 that blocks commits gets uninstalled within a week; one that tells you something
 true gets kept. Enforcement is opt-in via `--min-coverage` / `--max-critical`.
+
+The commit trailer is **opt-in** too. Evidence stays in `.git` and dies with the
+clone; the trailer is the one number that leaves the repository with the commit.
+In return it is the only record that can later answer "was the line behind this
+bug fix unread when it went in?" — the experiment that decides whether this
+metric means anything. Merge, squash and amend messages are left alone, and
+`--no-verify` does not switch it off: that flag skips checks, and this is a
+record, not a check.
 
 ## Why
 
@@ -273,12 +287,12 @@ The composite **Review Score** is coverage weighted by what the coverage was *of
 ```
 Review Score
 
-█████░░░░░ 49
+████░░░░░░ 43
 
-Coverage       64%
-Critical       24%     ← this is why the score is 49 and not 64
-New code       64%
-AI-generated   48%
+Coverage         55%
+Critical         21%     ← this is why the score is 43 and not 55
+New code         55%
+Machine-written  43%
 ```
 
 Components with nothing to measure are dropped and their weight is redistributed,
@@ -395,14 +409,21 @@ validated.
 
 ## Status
 
-v0.3.4 — the two modes, the report panel, the sidebar, the mouse sensor,
-interacted lines and pace are on `main`. Every folder of a
-multi-root workspace is tracked as of this version; before it, only the first
-one was.
+v0.4.0 — the two modes, the report panel, the sidebar, the mouse sensor,
+interacted lines, pace, the commit trailer, `forget`, and the line-shape model
+in full. Every folder of a multi-root workspace is tracked as of this version;
+before it, only the first one was.
 See [`CHANGELOG.md`](CHANGELOG.md) for what changed and
 [`docs/BRAINSTORM.md`](docs/BRAINSTORM.md) (Korean) for the reasoning about
 what else to measure and build. See [`docs/PLAN.md`](docs/PLAN.md) for what is
-next and [`docs/QUESTIONS.md`](docs/QUESTIONS.md) for the decisions still open.
+next, [`docs/QUESTIONS.md`](docs/QUESTIONS.md) for the decisions still open, and
+[`docs/RELEASING.md`](docs/RELEASING.md) for how a version gets published.
+
+The extension has still never been run by hand in a real VS Code window — this
+container has no editor, so the core, the CLI and the hooks are verified against
+real repositories and the editor surface is verified through a stubbed API. That
+is the first thing to do with it, and the first item in
+[`docs/PLAN.md`](docs/PLAN.md).
 
 ## License
 

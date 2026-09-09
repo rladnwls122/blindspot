@@ -70,6 +70,7 @@ function makeVscode(): any {
       onDidGrantWorkspaceTrust: () => disposable(() => {}),
       onDidSaveTextDocument: () => disposable(() => {}),
       onDidCloseTextDocument: () => disposable(() => {}),
+      onDidRenameFiles: () => disposable(() => {}),
       onDidChangeTextDocument: () => disposable(() => {}),
       get textDocuments() {
         return stub.openDocuments;

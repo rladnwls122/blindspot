@@ -283,12 +283,12 @@ critical 파일 안의 주석은 한 단계 강등됩니다. 주석에 auth 버�
 ```
 Review Score
 
-█████░░░░░ 49
+████░░░░░░ 43
 
-Coverage       64%
-Critical       24%     ← 점수가 64가 아니라 49인 이유
-New code       64%
-AI-generated   48%
+Coverage         55%
+Critical         21%     ← 점수가 55가 아니라 43인 이유
+New code         55%
+Machine-written  43%
 ```
 
 측정할 대상이 없는 항목은 빠지고 가중치는 나머지에 재분배됩니다.
@@ -315,8 +315,8 @@ VSCodium, Cursor, Windsurf, Gitpod가 확장을 받아 가는 곳입니다. VS C
 
 ```bash
 npm install
-npm run package                              # blindspot-0.3.4.vsix 생성
-code --install-extension blindspot-0.3.4.vsix
+npm run package                              # blindspot-0.4.0.vsix 생성
+code --install-extension blindspot-0.4.0.vsix
 ```
 
 git 저장소가 열려 있으면 바로 상태 표시줄과 Activity Bar의 Blindspot 뷰에
@@ -351,6 +351,7 @@ npm run icon       # media/icon.png 재생성
 | `Blindspot: Choose What the Diff Is Measured Against` | 마지막 리뷰 / `baseRef` / 임의의 ref |
 | `Blindspot: Review Blindspot` | 안 읽은 hunk로 점프, 위험도 높은 순 |
 | `Blindspot: Mark File As Reviewed` | "이건 GitHub UI에서 읽었다" (사이드바에서도) |
+| `Blindspot: Stop Measuring This File` | 실수로 연 파일을 분모에서 뺀다 (사이드바 휴지통) |
 | `Blindspot: Complete Review` | 기준을 HEAD로 — 여기까지는 봤다 |
 | `Blindspot: Install pre-commit Hook` | 커밋 시점에 카드 출력 |
 | `Blindspot: Toggle Unread Line Markers` | 거터 마커 |
@@ -362,14 +363,26 @@ npm run icon       # media/icon.png 재생성
 blindspot check --staged            # 지금 커밋하려는 것에 대한 카드 출력
 blindspot report                    # 파일별 표 + Read/Focus/Activity/Pace
 blindspot read                      # Reading 모드가 보는 것 — 연 파일 전체. git 불필요
+blindspot read src/core             # 그중 한 파일이나 폴더만
+blindspot forget vendor/            # 분모에서 뺀다 (증거 삭제 + 이후로도 재지 않음)
+blindspot forget --list             # 뺀 목록 · --undo <path> 로 되돌림
 blindspot check --min-coverage 70   # 70% 미만이면 exit 1 (CI나 엄격한 훅용)
 blindspot check --json              # 기계가 읽는 형식
+blindspot check --staged --trailer  # 커밋 트레일러 한 줄: Blindspot: 36% (66/182 lines unread)
+blindspot install-hook --trailer    # prepare-commit-msg 훅도 설치 — 커밋마다 그 줄을 남김 (옵트인)
 blindspot --version                 # 버전
 ```
 
 설치되는 pre-commit 훅은 기본적으로 **경고하고 exit 0** 합니다. 커밋을 막는
 리뷰 도구는 일주일 안에 제거되고, 참인 사실을 알려 주는 도구는 남습니다.
 강제는 `--min-coverage` / `--max-critical`로 옵트인입니다.
+
+커밋 트레일러도 **옵트인**입니다. 증거는 `.git` 안에 머물고 클론과 함께
+사라지지만, 트레일러는 커밋과 함께 저장소를 떠나는 유일한 숫자이기 때문입니다.
+대신 그 덕분에 나중에 "버그 수정이 고친 줄은 들어올 때 읽히지 않은 줄이었나"를
+물을 수 있습니다 — 이 지표가 의미가 있는지를 가르는 실험의 데이터가 여기서
+나옵니다. merge / squash / amend 메시지는 건드리지 않고, `--no-verify`로도
+꺼지지 않습니다: 그 플래그는 검사를 건너뛰는 것이고, 이건 검사가 아니라 기록입니다.
 
 ## 설정
 
@@ -449,14 +462,19 @@ demo/            스크립트 세션을 실제 모델로 재생
 
 ## 상태
 
-v0.3.4 — 두 모드, 리포트 패널과 사이드바, 마우스 센서,
-interacted/pace가 `main`에 들어가 있습니다. 멀티루트 워크스페이스의 모든 폴더를
-추적하는 것은 이 버전부터이고, 그 전에는 첫 폴더 하나만 추적했습니다.
-무엇이 바뀌었는지는
+v0.4.0 — 두 모드, 리포트 패널과 사이드바, 마우스 센서, interacted/pace,
+커밋 트레일러, `forget`, 그리고 라인 모양 모델 전체가 `main`에 들어가 있습니다.
+멀티루트 워크스페이스의 모든 폴더를 추적하는 것은 이 버전부터이고, 그 전에는
+첫 폴더 하나만 추적했습니다. 무엇이 바뀌었는지는
 [`CHANGELOG.md`](CHANGELOG.md)에, 무엇을 더 재고 무엇을 더 만들지 따져 본 기록은
 [`docs/BRAINSTORM.md`](docs/BRAINSTORM.md)에 있습니다. 다음 계획은
 [`docs/PLAN.md`](docs/PLAN.md), 아직 열려 있는 결정은
-[`docs/QUESTIONS.md`](docs/QUESTIONS.md)를 보세요.
+[`docs/QUESTIONS.md`](docs/QUESTIONS.md), 배포 절차는
+[`docs/RELEASING.md`](docs/RELEASING.md)를 보세요.
+
+아직 실제 VS Code 창에서 손으로 돌려본 적은 없습니다. 이 컨테이너에 에디터가 없어
+코어·CLI·훅은 진짜 저장소로, 에디터 표면은 스텁 API로 검증했습니다. 그게 이
+확장으로 가장 먼저 할 일이고, [`docs/PLAN.md`](docs/PLAN.md)의 첫 항목입니다.
 
 ## 참고 문헌
 

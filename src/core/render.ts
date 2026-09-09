@@ -113,7 +113,7 @@ export function renderScore(report: DiffReport, opts: RenderOptions = {}): strin
   rows.push(metric('Coverage', s.coverage, true, opts));
   rows.push(metric('Critical', s.critical, s.measured.critical, opts));
   rows.push(metric('New code', s.newCode, s.measured.newCode, opts));
-  rows.push(metric('AI-generated', s.ai, s.measured.ai, opts));
+  rows.push(metric('Machine-written', s.ai, s.measured.ai, opts));
   return rows.join('\n');
 }
 
@@ -123,7 +123,8 @@ function metric(label: string, value: number, measured: boolean, opts: RenderOpt
     measured && opts.color
       ? paint(text, value >= 0.9 ? ANSI.green : value >= 0.7 ? ANSI.yellow : ANSI.red, true)
       : text;
-  return `${padEnd(label, 14)}${padStart(colored, opts.color && measured ? text.length + 9 : 4)}`;
+  // Right-align on the visible text, so colour codes cannot shift the column.
+  return `${padEnd(label, 16)}${padStart('', 4 - visualWidth(text))}${colored}`;
 }
 
 /**
@@ -213,4 +214,23 @@ function short(file: string, width: number): string {
 export function renderSummaryLine(report: DiffReport): string {
   if (report.totalChangedLines === 0) return 'Blindspot: no changes';
   return `Blindspot ${pct(report.blindspot)}% · ${report.unseenLines}/${report.totalChangedLines} lines unread`;
+}
+
+/**
+ * The commit trailer: `Blindspot: 36% (66/182 lines unread)`.
+ *
+ * One aggregate per commit, and the only record that survives the session —
+ * evidence lives in `.git` and dies with the clone, but a trailer travels with
+ * the commit. That is what makes it the data source for the one experiment
+ * that decides whether this metric means anything: when a bug is fixed, was
+ * the line that caused it unread at the time it was committed?
+ *
+ * Null when there is nothing to measure, so a hook appends nothing rather than
+ * a trailer claiming a review of zero lines. A fully read commit still gets
+ * one: `0%` is a data point too. Plain ASCII, one line, git-trailer shaped, so
+ * `git interpret-trailers --parse` and a regex both read it back.
+ */
+export function renderTrailer(report: DiffReport): string | null {
+  if (report.totalChangedLines === 0) return null;
+  return `Blindspot: ${pct(report.blindspot)}% (${report.unseenLines}/${report.totalChangedLines} lines unread)`;
 }

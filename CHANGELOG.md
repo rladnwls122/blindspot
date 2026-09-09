@@ -91,6 +91,231 @@
   sidebar and the markers as if it were live. Both now clear, and the sidebar
   says tracking is off.
 
+## [0.4.0] — 2026-09-04
+
+Two modes instead of one, a sidebar, a report panel fed by your own session, a
+commit trailer, the line-shape model in full, and a long run of git-plumbing
+fixes — a file name with a non-ASCII character, a submodule bump, a symlink, a
+rename, a linked worktree, a workspace opened by a second name, and four
+`diff.*` settings that quietly changed what was measured.
+
+CI runs on development branches now, not only on `main`. It had been failing on
+Windows since 2026-09-02 and no branch met that platform before it was merged,
+which is how three of the fixes above went unnoticed for two days.
+
+### Added
+
+- **Two modes, switchable.** `Diff` measures the lines you changed; `Reading`
+  measures every line of every file you open. The switch is
+  `Blindspot: Switch Mode`, `Blindspot: Toggle Diff / Reading Mode`, and the
+  status bar; the setting behind it is `blindspot.mode` (`auto` / `diff` /
+  `reading`). What a diff is measured against is `Blindspot: Choose What the
+  Diff Is Measured Against` — the last completed review, `blindspot.baseRef`,
+  or a ref you type — stored as `blindspot.diffSince`. The commit-time warning
+  measures the diff whatever mode the panel is in, so a reading session cannot
+  switch it off by accident.
+- **The mouse as a second focus sensor.** The hover request VS Code makes when
+  the pointer stops over a token is the one place the API says where the mouse
+  is. The tracker now takes whichever of caret and mouse moved more recently as
+  the focus of the attention budget (a scroll invalidates the mouse, since the
+  text under it moved), and a mouse rest counts as the same *navigated* signal
+  a caret placement does. Reading with the mouse while the caret sits at the
+  top of the file used to credit the wrong lines; it no longer does. Stored as
+  `pointerHits`; the hover explanation shows `n× caret, m× mouse`.
+- **Interacted lines.** Of the lines called reviewed, the report counts those
+  the reader also touched (caret, mouse, keystrokes) apart from those that
+  passed on screen time alone. Status bar, sidebar and CLI all show it.
+- **Reading pace.** Attention is a conserved budget, so the focused time
+  credited to the target lines recovers the time spent on them, and lines per
+  minute follows. Past the 300–500 lines/hour at which review studies see
+  defect detection fall off, the CLI flags the pace as `fast`.
+- **Deleted lines are shown.** Still never scored — you cannot fail to read a
+  line that is gone — but each file now says how many lines it removed, and
+  the report carries the total.
+- **A sidebar.** *Blindspot* under Source Control: the headline, then every
+  file with unread code worst first, with the exact ranges beneath. Clicking
+  goes there; the inline check marks a file reviewed. Built from a pure tree
+  model in `src/core/tree.ts`, so its ranking and wording are unit-tested.
+- `blindspot read` — the CLI counterpart of Reading mode: every file with
+  reading evidence, whole. Needs a folder, not a repository. `blindspot report`
+  now prints the Read / Focus / Activity / Pace block too.
+- **A commit trailer.** `blindspot install-hook --trailer` also installs a
+  `prepare-commit-msg` hook, and every commit made afterwards carries
+  `Blindspot: 36% (66/182 lines unread)` — the share of its staged diff that
+  was unread when it went in. Evidence lives in `.git` and dies with the clone;
+  the trailer travels with the commit, which makes it the data the validation
+  experiment needs: when a bug is fixed, was the line behind it unread at the
+  time? Opt-in, because unlike the evidence this one number leaves the
+  repository. Merge, squash and amend messages are left alone; a rewritten
+  message gets one trailer, not two; and when the editor is about to open the
+  trailer sits below the subject line the way `git commit -s` places its own.
+  `blindspot check --staged --trailer` prints the line by itself.
+- **The line-shape catalogue, implemented.** How long a line must hold your
+  focus before it counts as read scales with how much reading it actually
+  costs, and the catalogue in
+  `docs/superpowers/specs/2026-09-03-low-read-cost-line-shapes.md` is now in
+  the model in full: dependency declarations, literal assignments, `this.x =
+  x` delegation, a return of a literal, struct and enum members across Go,
+  Rust and C, string-only log lines, argument-less annotations, test
+  skeletons, and per-file-type shapes for JSON, YAML, CSS, SQL, Dockerfiles,
+  Makefiles and JSX.
+  The half that matters is the trap list, which runs first and wins: a line
+  carrying a credential, a default, a comparison, control flow, a mutation of
+  somebody else's state, a destructive verb, concurrency, a suppressed check,
+  a swallowed error, a one-line permission answer or a default export pays
+  full price however simple its shape. A comment is cheap; a comment saying
+  `TODO`, `SAFETY`, `@ts-ignore` or `noqa` is not, because it exists to be
+  acted on. Every entry has a should-be-cheap and a must-not-be-cheap test.
+- **A way out of the reading denominator.** Reading mode measures every file
+  you have opened, so one 3,000-line vendored file opened by accident took over
+  the number and stayed for a month, until the prune. `Blindspot: Stop
+  Measuring This File`, the sidebar's inline bin, and `blindspot forget <path>`
+  drop a file or a folder: the evidence is deleted, and the path is remembered
+  as forgotten, because a file still open in a tab would earn fresh evidence
+  within seconds and be back in the denominator before anyone looked. That list
+  lives beside the evidence in the state, not in the committed
+  `.blindspot/config.json` — it is one person saying what they are not reading,
+  which is the same kind of fact as the evidence, and belongs in the same
+  private place. `blindspot forget --list` shows it and `--undo` reverses it.
+- `blindspot read <path>` narrows the reading report to one file or folder, as
+  the design called for. Without a path it is unchanged.
+- A `meta.json` beside the state of a folder that is not a repository, naming
+  the folder it belongs to and when it was last written. `~/.blindspot/` is a
+  set of twelve-hex-character directories; without this, nobody can tell what
+  one is for or whether deleting it loses anything. Repositories get none —
+  `.git/blindspot` explains itself.
+- Mode-aware gutter marks: orange (red where risky) for an unread changed
+  line, blue for a line you simply have not got to yet while reading.
+
+### Changed
+
+- The Review Score row that said `AI-generated` now says `Machine-written`, in
+  the CLI, the report panel and the demo alike. The sidebar and the hover
+  already used that name, and it is the honest one: an editor can see that a
+  line arrived in bulk or was declared by a tool, not that a model wrote it.
+  What the bucket counts is unchanged.
+- `Blindspot: Show Review Report` now opens the interactive page that used to
+  be the demo (`demo/index.html`), fed the evidence of your own session: the
+  threshold slider re-judges every line of the current target in the browser,
+  from the same per-line signals the status bar and the git hook judge it by.
+  Later reports are posted into the page, so the slider and scroll position
+  survive the refresh that runs every few seconds. The page's file list opens a
+  file at its first unread line; its card button jumps to the next unread hunk.
+  The panel's `mark read` and `Complete review` buttons are gone; both remain
+  as palette commands, and the sidebar marks a file reviewed inline.
+- The page's verdict follows the model exactly: a line needs enough signals
+  *and* either a human edit or enough focused time. The demo used to accept the
+  signals alone, which is why it reported 64% for a session the extension
+  scores at 55%.
+- The page template moved from `demo/page.template.html` to `media/page.html`
+  so that it ships in the `.vsix`.
+- `blindspot.target` (four values) became `blindspot.mode` (three);
+  `unreviewed` folded into `diff` with `blindspot.diffSince` deciding the base.
+- `Blindspot: Mark Current File As Reviewed` is `Blindspot: Mark File As
+  Reviewed`, and accepts a file from the sidebar; `Toggle Unreviewed
+  Highlighting` is `Toggle Unread Line Markers`.
+- The periodic refresh — two git processes plus a report rebuild — is skipped
+  while the window is not focused and nothing is unsaved, since no evidence is
+  collected in that state. Regaining focus refreshes immediately, so a commit
+  made in a terminal shows up as soon as you come back.
+
+### Fixed
+
+- Nothing was slow, and that is now checked. `docs/PLAN.md` left open whether a
+  500-file diff could be re-measured every four seconds or whether the diff
+  would have to be cached; it takes 324 ms end to end, 8% of the interval, so
+  the cache was never needed. `test/scale.test.ts` keeps the answer honest, and
+  pins the property that actually matters: each file's text is fetched exactly
+  once per pass. In the editor that fetch is a read from disk, so a change that
+  reads twice would double the I/O of a background task and show up in no other
+  test.
+- A folder that is not a repository keeps one reading history, however it was
+  opened. Its evidence lives under `~/.blindspot/<hash of the folder's path>`,
+  and a folder reached through a symlink, a junction or an 8.3 short name
+  hashed to a second directory: open the project the other way and it looked
+  exactly like never having read any of it. The hash is taken over the folder's
+  canonical name now. That moves where the state is kept for everyone, not only
+  for the aliased, so the old location is still read from when the new one is
+  empty — read from, never written to and never deleted, so rolling back this
+  version loses nothing.
+- A workspace opened by another of its names is measured again. Everything here
+  is keyed by a workspace-relative path, and the two halves of that subtraction
+  came from different places: the root from `git rev-parse --show-toplevel`,
+  which resolves symlinks and answers with Windows' long form, and the file
+  from the editor, which reports the path the folder was opened by. Open a
+  project through a symlink or a junction, or by a path holding an 8.3 short
+  name, and every key came out starting with `..` — outside the workspace. The
+  extension then tracked nothing at all, and said nothing, because "that file
+  is not in this workspace" is an ordinary answer. Both sides are canonicalised
+  now, in one shared function rather than the three copies that had drifted
+  apart in the tracker, the controller and the decorations.
+- `blindspot read <path>` and `blindspot forget <path>` now find the path on
+  Windows. git always reports the long spelling of a directory and the shell
+  reports whatever it was started with, so the same folder is
+  `C:\Users\runneradmin\…` to one and `C:\Users\RUNNER~1\…` to the other;
+  when they disagreed the relative path walked up out of the repository and
+  nothing matched, reported as "no reading recorded for it" — a wrong answer in
+  the voice of a right one. Both sides are canonicalised first.
+- `diff.submodule=diff` and a `.gitattributes` textconv filter no longer put
+  lines nobody can read into the report. The first inlines a submodule's own
+  diff, whose paths belong to another repository and exist nowhere in this
+  working tree; the second shows converted text rather than the lines on
+  screen. Either way the report carried lines no evidence could ever attach
+  to. The diff is now requested with `--submodule=short --no-textconv`.
+- A user's `diff.mnemonicPrefix` or `diff.noprefix` setting no longer changes
+  what gets measured. The parser strips the standard `a/` and `b/` from the
+  diff header; with mnemonic prefixes every file came back as `w/src/…`, a
+  path that exists nowhere, so no evidence anchored and the report named the
+  wrong file, and with no prefix a directory really called `b` lost its name.
+  The diff is now requested with the standard prefixes pinned, whatever the
+  configuration says.
+- `install-hook` in a linked worktree (`git worktree add`) now installs where
+  git runs hooks. It wrote into the worktree's own git directory,
+  `.git/worktrees/<name>/hooks`, which git never reads — the hook was
+  reported as installed and never ran once. The hooks directory now comes from
+  `git rev-parse --git-path hooks`, which also covers `core.hooksPath`.
+- Renaming a file or folder in the editor no longer forgets that you read it.
+  Evidence is keyed by path, so a rename stranded everything recorded under the
+  old name: in Reading mode the file vanished from the report, and it came back
+  entirely unread. The tracker now follows the editor's rename event and moves
+  the evidence with the lines — a folder rename carries every file beneath it,
+  and evidence that arrives under a name already open is anchored and merged
+  rather than dropped.
+- A submodule bump or a symlink retarget no longer shows up as an unread line.
+  Their diff "lines" are a commit hash and a link target, nothing an editor
+  opens, so the report carried an unread line that could never be cleared and
+  a commit that only moved a submodule pointer scored 0%. The parser now reads
+  the new side's mode from the header and leaves gitlinks and symlinks out; a
+  symlink that becomes a regular file is text and is measured. An untracked
+  symlink is likewise skipped instead of being read through to its target.
+- A file whose name has a non-ASCII character — `src/한글.ts` — no longer
+  breaks the whole measurement. git quotes such a path in the diff header with
+  octal escapes of its UTF-8 bytes; the parser tried to read that as a JSON
+  string and threw, and the error surfaced as "git diff against HEAD failed"
+  for every file in the repository: nothing measured, and an enforcing hook
+  blocked the commit. Paths are now unquoted the way git quotes them, on either
+  side of a rename and in `rename to` lines too.
+- The editor was collecting evidence under different focal defaults than the
+  CLI, the tests and the docs: `package.json` still declared
+  `focalSpanLines` 5 / `focalDecayLines` 24 / `peripheralFloor` 0.2 /
+  `idleAfterMs` 60 s, and VS Code hands a declared default back for an unset
+  setting, so the code's 2 / 10 / 0.05 / 30 s never applied inside the editor.
+  The two now agree, and the README's config example says the real numbers.
+- `npm test` runs on Node 22 as well as 20 (and on Windows): the test files
+  are listed by a small runner instead of relying on `node --test <dir>`.
+- A file that was deleted or renamed after the report was built made "Review
+  Blindspot" and the file links fail with a generic error. Both now say the
+  file moved and refresh the report instead of failing on it again.
+- A command that throws now reports its own error message, not VS Code's
+  generic "command failed" naming the id.
+- A controller that failed partway through startup kept its command ids
+  registered, so the fallback handlers could not take them back and VS Code
+  rejected the second registration. The controller now owns and releases
+  everything it registered.
+- Turning `blindspot.enabled` off left the last report on screen in the
+  sidebar and the markers as if it were live. Both now clear, and the sidebar
+  says tracking is off.
+
 ## [0.3.4] — 2026-09-06
 
 ### Added

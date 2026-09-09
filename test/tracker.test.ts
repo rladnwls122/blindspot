@@ -1,10 +1,14 @@
 import { test, describe, beforeEach, afterEach, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import Module from 'node:module';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import { DEFAULT_CONFIG } from '../src/core/config';
 import { evaluate } from '../src/core/evidence';
+import { hashLine } from '../src/core/hash';
 import { emptyState } from '../src/core/store';
+import { emptyEvidence } from '../src/core/types';
 
 /**
  * The collector, driven through a fake editor and a fake clock.
@@ -51,6 +55,7 @@ const vscodeStub = {
   workspace: {
     onDidChangeTextDocument: () => noop,
     onDidCloseTextDocument: () => noop,
+    onDidRenameFiles: () => noop,
   },
   TextDocumentChangeReason: { Undo: 1, Redo: 2 },
 };
@@ -312,5 +317,145 @@ describe('AttentionTracker', { concurrency: 1 }, () => {
     const snap = tracker.snapshot(() => undefined);
     assert.equal(snap.activity.jumps, 2);
     assert.equal(snap.baseline?.commit.length, 40);
+  });
+
+  test('a renamed file keeps the reading recorded under its old name', () => {
+    const state = emptyState();
+    state.files['src/old.ts'] = [
+      {
+        h: hashLine('line 0'),
+        i: 0,
+        e: { ...emptyEvidence(), visibleMs: 5000, focusedMs: 5000, dwellEvents: 1, caretHits: 1 },
+      },
+    ];
+    tracker = new AttentionTracker({ root: ROOT }, DEFAULT_CONFIG, {}, () => {});
+    tracker.start(state);
+
+    tracker.followRename('src/old.ts', 'src/new.ts');
+    tracker.primeFromText('src/new.ts', ['line 0', 'line 1']);
+
+    assert.equal(tracker.getEvidence('src/new.ts', 1)?.focusedMs, 5000, 'the line kept its evidence');
+    assert.deepEqual(tracker.files(), ['src/new.ts'], 'nothing is left under the old name');
+  });
+
+  test('a folder rename carries every file beneath it, and only those', () => {
+    const state = emptyState();
+    const e = { ...emptyEvidence(), focusedMs: 3000 };
+    state.files['src/a/x.ts'] = [{ h: hashLine('x'), i: 0, e }];
+    state.files['src/a/deep/y.ts'] = [{ h: hashLine('y'), i: 0, e }];
+    // A sibling whose name merely starts the same way.
+    state.files['src/ab.ts'] = [{ h: hashLine('z'), i: 0, e }];
+    tracker = new AttentionTracker({ root: ROOT }, DEFAULT_CONFIG, {}, () => {});
+    tracker.start(state);
+
+    tracker.followRename('src/a', 'src/b');
+
+    assert.deepEqual(tracker.files().sort(), ['src/ab.ts', 'src/b/deep/y.ts', 'src/b/x.ts']);
+  });
+
+  test('evidence that lands on a name already open is saved, then merged, not lost', () => {
+    const state = emptyState();
+    state.files['src/old.ts'] = [
+      { h: hashLine('line 0'), i: 0, e: { ...emptyEvidence(), humanEdits: 2, focusedMs: 100 } },
+    ];
+    tracker = new AttentionTracker({ root: ROOT }, DEFAULT_CONFIG, {}, () => {});
+    tracker.start(state);
+    // new.ts is open and already has a ledger of its own.
+    tracker.markReviewed('src/new.ts', 2);
+
+    tracker.followRename('src/old.ts', 'src/new.ts');
+
+    // Saved before anything anchored the moved evidence: it rides along.
+    const snap = tracker.snapshot(() => ['line 0', 'line 1']);
+    assert.equal(
+      snap.files['src/new.ts'].some((l: { e: { humanEdits: number } }) => l.e.humanEdits === 2),
+      true,
+      'the moved evidence survives a snapshot',
+    );
+    assert.equal('src/old.ts' in snap.files, false);
+
+    // Touched: it is anchored to the text and folded into the open ledger.
+    tracker.primeFromText('src/new.ts', ['line 0', 'line 1']);
+    assert.equal(tracker.getEvidence('src/new.ts', 1)?.humanEdits, 2);
+    assert.equal(tracker.files().includes('src/old.ts'), false);
+  });
+
+  test('forgetting a folder takes it out of the reading target for good', () => {
+    const state = emptyState();
+    const e = { ...emptyEvidence(), focusedMs: 4000 };
+    state.files['vendor/big/a.ts'] = [{ h: hashLine('a'), i: 0, e }];
+    state.files['vendor/big/deep/b.ts'] = [{ h: hashLine('b'), i: 0, e }];
+    state.files['vendor/small.ts'] = [{ h: hashLine('c'), i: 0, e }];
+    state.files['src/app.ts'] = [{ h: hashLine('d'), i: 0, e }];
+    tracker = new AttentionTracker({ root: ROOT }, DEFAULT_CONFIG, {}, () => {});
+    tracker.start(state);
+
+    const gone = tracker.forget('vendor/big');
+    assert.deepEqual(gone, ['vendor/big/a.ts', 'vendor/big/deep/b.ts']);
+    assert.deepEqual(tracker.files().sort(), ['src/app.ts', 'vendor/small.ts']);
+    // Gone from what gets written back too, not just from this session.
+    const snap = tracker.snapshot(() => ['a']);
+    assert.equal(Object.keys(snap.files).some((f) => f.startsWith('vendor/big')), false);
+    assert.deepEqual(tracker.forget('vendor/big'), [], 'forgetting it again finds nothing left');
+    // The decision outlives the evidence: it is written back with the state.
+    assert.deepEqual([...snap.ignored], ['vendor/big']);
+    assert.deepEqual([...tracker.forgotten], ['vendor/big']);
+  });
+
+  test('a workspace opened by another of its names is still measured', () => {
+    // The root comes from git, which resolves symlinks; the document path
+    // comes from the editor, which reports the path the folder was opened by.
+    // When they disagree every file looks like it is outside the workspace,
+    // and the tracker records nothing at all without saying so.
+    const base = fs.mkdtempSync(path.join(os.tmpdir(), 'blindspot-tracker-'));
+    const real = path.join(base, 'real');
+    fs.mkdirSync(path.join(real, 'src'), { recursive: true });
+    fs.writeFileSync(path.join(real, 'src', 'a.ts'), 'const a = 1;\n');
+    const opened = path.join(base, 'opened-as');
+    fs.symlinkSync(real, opened, 'junction');
+    try {
+      const doc = {
+        uri: { scheme: 'file', fsPath: path.join(opened, 'src', 'a.ts'), toString: () => 'a' },
+        lineCount: 4,
+        lineAt: (i: number) => ({ text: `line ${i}` }),
+      };
+      const editor = {
+        document: doc,
+        visibleRanges: [{ start: { line: 0 }, end: { line: 3 } }],
+        viewColumn: 1,
+        selection: { active: { line: 0 } },
+      };
+      world.visibleEditors = [editor as never];
+      world.activeEditor = editor as never;
+
+      // The root as git would report it: the resolved one.
+      tracker = new AttentionTracker({ root: real }, DEFAULT_CONFIG, {}, () => {});
+      tracker.start(emptyState());
+      hold(6000);
+
+      assert.deepEqual(tracker.files(), ['src/a.ts'], 'the file is measured, under its real key');
+      assert.equal(tracker.getEvidence('src/a.ts', 1)!.focusedMs > 0, true);
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+  test('a forgotten file that is still open does not walk back into the target', () => {
+    const editor = makeEditor(20, 0, 19, 5);
+    world.visibleEditors = [editor];
+    world.activeEditor = editor;
+    startTracker();
+    hold(6000);
+    assert.equal(tracker.files().includes(FILE), true, 'the open file is measured');
+
+    tracker.forget(FILE);
+    hold(6000);
+    assert.equal(tracker.files().includes(FILE), false, 'and stays out while it is open');
+    assert.equal(tracker.getEvidence(FILE, 1), undefined);
+
+    // Undo puts it back, with nothing read in it yet.
+    assert.equal(tracker.measureAgain(FILE), true);
+    hold(6000);
+    assert.equal(tracker.files().includes(FILE), true);
   });
 });

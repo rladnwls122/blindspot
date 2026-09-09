@@ -2,6 +2,7 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   emptyState,
+  forgetFiles,
   parseAiRegions,
   parseState,
   pruneState,
@@ -95,6 +96,40 @@ describe('parseState', () => {
     assert.deepEqual(parseState('not json').files, {});
     assert.deepEqual(parseState('[]').files, {});
     assert.deepEqual(parseState('null').files, {});
+  });
+});
+
+describe('forgetFiles', () => {
+  function withFiles(...names: string[]) {
+    const state = emptyState();
+    for (const n of names) state.files[n] = [{ h: 'h', i: 0, e: { ...emptyEvidence(), focusedMs: 1000 } }];
+    return state;
+  }
+
+  test('drops one file and says so', () => {
+    const { state, forgotten } = forgetFiles(withFiles('src/a.ts', 'src/b.ts'), 'src/a.ts');
+    assert.deepEqual(forgotten, ['src/a.ts']);
+    assert.deepEqual(Object.keys(state.files), ['src/b.ts']);
+  });
+
+  test('a folder takes everything under it, and nothing that merely starts alike', () => {
+    const state = withFiles('vendor/lib/a.ts', 'vendor/lib/deep/b.ts', 'vendor/library.ts', 'src/a.ts');
+    const out = forgetFiles(state, 'vendor/lib');
+    assert.deepEqual(out.forgotten, ['vendor/lib/a.ts', 'vendor/lib/deep/b.ts']);
+    assert.deepEqual(Object.keys(out.state.files).sort(), ['src/a.ts', 'vendor/library.ts']);
+  });
+
+  test('forgetting what was never recorded changes nothing', () => {
+    const before = withFiles('src/a.ts');
+    const { state, forgotten } = forgetFiles(before, 'src/nope.ts');
+    assert.deepEqual(forgotten, []);
+    assert.deepEqual(Object.keys(state.files), ['src/a.ts']);
+  });
+
+  test('the evidence is gone, not hidden — a reload cannot bring it back', () => {
+    const { state } = forgetFiles(withFiles('src/a.ts', 'src/b.ts'), 'src/a.ts');
+    const reloaded = parseState(serializeState(state));
+    assert.equal('src/a.ts' in reloaded.files, false);
   });
 });
 

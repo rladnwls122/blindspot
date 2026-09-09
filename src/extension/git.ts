@@ -16,9 +16,10 @@ export interface GitContext {
   gitDir: string;
   /**
    * Absolute path to the directory git actually runs hooks from. Not always
-   * `<gitDir>/hooks`: `core.hooksPath` moves it, and husky moves it by default.
-   * Writing to the wrong one installs a hook that silently never runs, which
-   * is worse than not installing one at all.
+   * `<gitDir>/hooks`: `core.hooksPath` moves it (husky does so by default),
+   * and a linked worktree's own git directory never holds hooks at all — they
+   * live in the common one. Writing to the wrong place installs a hook that
+   * silently never runs, which is worse than not installing one at all.
    */
   hooksDir: string;
 }
@@ -44,6 +45,16 @@ export async function findGitContext(cwd: string): Promise<GitContext | null> {
 }
 
 async function resolveHooksDir(cwd: string, root: string, gitDir: string): Promise<string> {
+  try {
+    // Ask git rather than guess: `--git-path hooks` is the directory it will
+    // run hooks from, with `core.hooksPath` and a linked worktree's common
+    // directory both accounted for. It comes back relative to `cwd` (or
+    // absolute), never relative to anything else.
+    const answered = (await git(cwd, ['rev-parse', '--git-path', 'hooks'])).trim();
+    if (answered) return path.resolve(cwd, answered);
+  } catch {
+    // Fall through to working it out by hand.
+  }
   try {
     const configured = (await git(cwd, ['config', '--get', 'core.hooksPath'])).trim();
     // git resolves a relative core.hooksPath against the working tree root.
@@ -74,7 +85,32 @@ export interface DiffOptions {
  */
 export async function collectDiff(ctx: GitContext, opts: DiffOptions = {}): Promise<FileDiff[]> {
   const baseRef = opts.baseRef || 'HEAD';
-  const args = ['diff', '--unified=0', '--no-color', '--no-ext-diff', '--find-renames'];
+  // Every flag here pins something a user's git configuration could otherwise
+  // change. What someone has git show them in their terminal is their
+  // business; it must not decide what gets measured.
+  //
+  //   --src-prefix / --dst-prefix  the parser strips exactly `a/` and `b/`.
+  //     `diff.mnemonicPrefix` would make every path `w/src/…`, a file that
+  //     exists nowhere, so nothing anchors and the report names the wrong
+  //     file; `diff.noprefix` would strip a real directory called `a` or `b`.
+  //   --submodule=short  `diff.submodule=diff` inlines the submodule's *own*
+  //     diff, whose paths (`vendor/lib/a.txt`) are files of another
+  //     repository. They are not in this working tree, so no evidence can
+  //     ever attach to them and they can never be read.
+  //   --no-textconv  a `.gitattributes` textconv filter shows converted text.
+  //     The evidence is anchored to hashes of the lines actually on screen,
+  //     so a converted line is a line nobody can ever have read.
+  const args = [
+    'diff',
+    '--unified=0',
+    '--no-color',
+    '--no-ext-diff',
+    '--find-renames',
+    '--src-prefix=a/',
+    '--dst-prefix=b/',
+    '--submodule=short',
+    '--no-textconv',
+  ];
   if (opts.staged) args.push('--cached');
   args.push(baseRef, '--');
 
@@ -140,7 +176,9 @@ async function wholeFileDiffs(ctx: GitContext, files: string[]): Promise<FileDif
   for (const file of files) {
     try {
       const abs = path.join(ctx.root, file);
-      const stat = await fs.stat(abs);
+      // lstat, not stat: an untracked symlink would otherwise be read through
+      // to its target and that file's every line reported as new.
+      const stat = await fs.lstat(abs);
       if (!stat.isFile() || stat.size > 2 * 1024 * 1024) continue;
       const content = await fs.readFile(abs, 'utf8');
       if (content.includes('\0')) continue;

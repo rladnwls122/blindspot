@@ -20,6 +20,20 @@ export interface BlindspotState {
    * it is unreviewed until the next completion. Null until a review completes.
    */
   baseline: { commit: string; setAt: number } | null;
+  /**
+   * Paths the reader has said not to measure — a vendored tree opened once by
+   * accident, a generated file. Files or folders, workspace-relative.
+   *
+   * It lives in the state and not in `.blindspot/config.json` on purpose. That
+   * file is committed and decides what is risky for the whole team; this is one
+   * person saying what they are not reading, which is the same kind of fact as
+   * the evidence it sits beside, and belongs in the same private place.
+   *
+   * Deleting the evidence is not enough on its own: a file still open in a tab
+   * gets a fresh ledger on the next tick and walks straight back into the
+   * denominator. This is what keeps it out.
+   */
+  ignored: string[];
 }
 
 export function emptyState(): BlindspotState {
@@ -30,6 +44,7 @@ export function emptyState(): BlindspotState {
     trackedMs: 0,
     activity: emptyActivity(),
     baseline: null,
+    ignored: [],
   };
 }
 
@@ -71,7 +86,20 @@ export function parseState(raw: string): BlindspotState {
     trackedMs: num(obj.trackedMs, 0),
     activity: parseActivity(obj.activity),
     baseline: parseBaseline(obj.baseline),
+    ignored: parseIgnored(obj.ignored),
   };
+}
+
+/** Added after version 2 shipped; an older state simply ignores nothing. */
+function parseIgnored(v: unknown): string[] {
+  if (!Array.isArray(v)) return [];
+  const out = v.filter((p): p is string => typeof p === 'string' && p.length > 0);
+  return [...new Set(out)].sort();
+}
+
+/** True when `file` is a forgotten path, or lives under a forgotten folder. */
+export function isForgotten(ignored: readonly string[], file: string): boolean {
+  return ignored.some((p) => file === p || file.startsWith(`${p}/`));
 }
 
 function parseActivity(v: unknown): ActivityCounts {
@@ -138,6 +166,46 @@ export function pruneState(state: BlindspotState, maxAgeMs: number, now = Date.n
     if (freshest === 0 || now - freshest <= maxAgeMs) files[file] = lines;
   }
   return { ...state, files };
+}
+
+/**
+ * Drop everything recorded for one file, or for a folder and everything under
+ * it, and say how many files went.
+ *
+ * Reading mode's target is every file with evidence, so a 3,000-line vendored
+ * file opened once by accident becomes 3,000 lines of the denominator and
+ * stays there. Nothing else in the model can take it back out: the evidence is
+ * real, the file is real, and prune only forgets what has gone untouched for a
+ * month. This is the deliberate way out, and it is deliberate in both
+ * directions — the evidence is gone, not hidden.
+ */
+export function forgetFiles(
+  state: BlindspotState,
+  target: string,
+): { state: BlindspotState; forgotten: string[] } {
+  const prefix = target.replace(/\/+$/, '');
+  const forgotten: string[] = [];
+  const files: Record<string, StoredLine[]> = {};
+  for (const [file, lines] of Object.entries(state.files)) {
+    if (file === prefix || file.startsWith(`${prefix}/`)) forgotten.push(file);
+    else files[file] = lines;
+  }
+  // Remember the decision, not just its effect: an open file would earn fresh
+  // evidence on the next tick and be back in the denominator by the time
+  // anyone looked. Folders already covered by a broader entry are dropped.
+  const ignored = [...state.ignored.filter((p) => p !== prefix && !p.startsWith(`${prefix}/`)), prefix];
+  return { state: { ...state, files, ignored: [...new Set(ignored)].sort() }, forgotten: forgotten.sort() };
+}
+
+/** Undo a `forgetFiles`: measure this path again. The evidence stays gone. */
+export function measureAgain(state: BlindspotState, target: string): { state: BlindspotState; restored: string[] } {
+  const prefix = target.replace(/\/+$/, '');
+  const restored = state.ignored.filter((p) => p === prefix || p.startsWith(`${prefix}/`));
+  if (restored.length === 0) return { state, restored: [] };
+  return {
+    state: { ...state, ignored: state.ignored.filter((p) => !restored.includes(p)) },
+    restored: restored.sort(),
+  };
 }
 
 /**

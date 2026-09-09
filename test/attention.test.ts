@@ -136,6 +136,249 @@ describe('read cost', () => {
   });
 });
 
+/**
+ * The catalogue in
+ * `docs/superpowers/specs/2026-09-03-low-read-cost-line-shapes.md`, as tests.
+ *
+ * Every entry is a pair: a line whose shape really does say what it contains,
+ * and a line of the same shape that hides something. The second half is the
+ * half that matters. A pattern that discounts a trap is a pattern that tells
+ * somebody they read a line they skimmed, so if one gets through, the fix is
+ * to narrow the pattern, never to delete the test.
+ */
+describe('shape discounts', () => {
+  const cheap = (line: string, file?: string) =>
+    assert.equal(shapeDiscount(line, file) < 1, true, `expected a discount: ${line}`);
+  const full = (line: string, file?: string) =>
+    assert.equal(shapeDiscount(line, file), 1, `expected full price: ${line}`);
+
+  test('dependency declarations are scanned, not read', () => {
+    for (const line of [
+      "import { A, B } from './x';",
+      "import x from 'y';",
+      "export * from './x';",
+      "const fs = require('fs');",
+      'import os',
+      'from a.b import c, d',
+      'import java.util.List;',
+      'package com.foo.bar;',
+      'using System.Linq;',
+      'use std::collections::HashMap;',
+      'mod foo;',
+      'pub use crate::core::Ledger;',
+      '#include <stdio.h>',
+      '#pragma once',
+      "require 'json'",
+      "require_relative '../x'",
+      'namespace App;',
+      "import 'package:flutter/material.dart';",
+      'alias Foo.Bar',
+      'module Foo where',
+      "@import 'base';",
+    ]) {
+      cheap(line);
+    }
+    // An import with no names is a side effect: discounted, but less.
+    assert.equal(shapeDiscount("import './polyfill';"), 0.5);
+    // An import of anything credential-shaped is read, not scanned.
+    full("import { signToken } from './auth';");
+  });
+
+  test('a lone keyword is one word to recognise', () => {
+    for (const line of ['return;', 'break;', 'continue;', 'pass', 'else', 'try {', 'finally {', 'done', 'fi', 'None', 'nil']) {
+      cheap(line);
+    }
+    full('return computeTotal();');
+    full('else if (x > 3) {');
+  });
+
+  test('a literal assignment is cheap; anything computed is not', () => {
+    for (const line of [
+      'const MAX = 3;',
+      'let done = false;',
+      "export const NAME = 'x';',".slice(0, -2),
+      'MAX_RETRIES = 3',
+      'items = []',
+      'val max = 3',
+      'const max = 3',
+      'let mut v = Vec::new();',
+      'int max = 3;',
+      '$max = 3;',
+      'var name string',
+      'private String name;',
+    ]) {
+      cheap(line);
+    }
+    for (const line of [
+      'const token = sign(payload, secret);',
+      'const x = a ? b : c;',
+      'const retries = compute(3);',
+      'const timeout = base || 5000;',
+      'const ok = a === b;',
+      'config.retries = 3;',
+      'const apiKey = "sk-live-1234";',
+      'let session = null;',
+    ]) {
+      full(line);
+    }
+  });
+
+  test('delegation and a simple return are the shapes reviewers skim most', () => {
+    for (const line of [
+      'this.foo = foo;',
+      'self.foo = foo',
+      'get name() { return this._name; }',
+      'public String getName() { return name; }',
+      'fun getName() = name',
+      'def name(self): return self._name',
+      'return 0;',
+      'return null;',
+      'return this;',
+      'return true',
+      'return name;',
+      'Ok(value)',
+      'Some(x)',
+    ]) {
+      cheap(line);
+    }
+    for (const line of [
+      'return a + b;',
+      'return foo();',
+      'return x ? a : b;',
+      // One word decides an access rule.
+      'return canEdit;',
+      'return isAllowed;',
+      'this.token = token;',
+    ]) {
+      full(line);
+    }
+  });
+
+  test('type fields and enum members are a name and a type', () => {
+    for (const line of [
+      'name: string;',
+      'readonly id?: number;',
+      'name: str',
+      'Name string',
+      'Age int',
+      'Name string `json:"name"`',
+      'pub name: String,',
+      'age: u32,',
+      'int count;',
+      'char* name;',
+      'Red,',
+      "RED = 'red',",
+      'Active = 1,',
+      'Foo(u32),',
+    ]) {
+      cheap(line);
+    }
+    // A signature is not a field: argument order and types are the review.
+    full('function foo(a: A, b: B): C {');
+    full('onChange: (v: string) => void | null;');
+  });
+
+  test('a comment is prose, and a warning comment is an instruction', () => {
+    for (const line of [
+      '// keep in sync with the server',
+      '/* a block */',
+      '* a doc line',
+      '# a python comment',
+      '-- a sql comment',
+      '<!-- markup -->',
+      '/// a rust doc',
+    ]) {
+      cheap(line);
+    }
+    for (const line of [
+      '// TODO: handle the empty case',
+      '// FIXME this leaks',
+      '// HACK: works by accident',
+      '// XXX do not ship',
+      '// SAFETY: the pointer outlives the borrow',
+      '// eslint-disable-next-line no-eval',
+      '// @ts-ignore',
+      '# noqa: E501',
+      '# type: ignore',
+    ]) {
+      full(line);
+    }
+  });
+
+  test('a log of a constant string is cheap; a log of a value is not', () => {
+    for (const line of [
+      "console.log('starting')",
+      'logger.info("x")',
+      'print("done")',
+      'log.Printf("x")',
+      'println!("x");',
+      'fmt.Println("x")',
+      'System.out.println("x");',
+      'Log.d(TAG, "x")',
+      'echo "x"',
+    ]) {
+      cheap(line);
+    }
+    for (const line of [
+      'log.info("user %s", user.id)',
+      'console.log(user.password)',
+      'logger.debug(`token: ${token}`)',
+    ]) {
+      full(line);
+    }
+  });
+
+  test('an annotation without arguments carries no configuration', () => {
+    for (const line of ['@Override', '@Injectable()', '@dataclass', '#[derive(Debug, Clone)]', '@Test', '@staticmethod', '[Fact]', "'use strict';"]) {
+      cheap(line);
+    }
+    full('@Column(name = "user_id", nullable = false)');
+    full('#[allow(dead_code)]');
+  });
+
+  test('a test skeleton is structure; its body is not', () => {
+    for (const line of [
+      "describe('Foo', () => {",
+      "it('works', () => {",
+      'beforeEach(() => {',
+      '#[test]',
+      'func TestFoo(t *testing.T) {',
+      '@pytest.fixture',
+    ]) {
+      cheap(line);
+    }
+    full("expect(result).toEqual({ ok: true });");
+    full('assert.equal(readCost(x, cfg), 1);');
+  });
+
+  test('markup and config shapes need to know what file they are in', () => {
+    // The same text is a keyword in one file and a string in another.
+    cheap('"name": "x",', 'package.json');
+    full('"name": "x",');
+    cheap('enabled: true', 'config.yaml');
+    cheap('display: flex;', 'a.css');
+    cheap('FROM node:20', 'Dockerfile');
+    cheap('FROM users', 'q.sql');
+    cheap('<div>', 'App.tsx');
+    cheap('.PHONY: all', 'Makefile');
+
+    // Each table's expensive column.
+    full('env: ${{ secrets.GITHUB_TOKEN }}', 'ci.yaml');
+    full('width: calc(100% - 2rem);', 'a.css');
+    full('WHERE id = $1', 'q.sql');
+    full('RUN npm ci && npm test', 'Dockerfile');
+    full('onClick={handleClick}', 'App.tsx');
+    full('\tgo build ./...', 'Makefile');
+  });
+
+  test('the read cost of a whole boilerplate block is a fraction of real code', () => {
+    const real = readCost('const totals = rows.reduce((a, r) => a + r.amount * r.qty, 0);', cfg);
+    for (const line of ['import { Foo } from "./foo";', 'this.name = name;', 'return null;', 'name: string;']) {
+      assert.equal(readCost(line, cfg) < real / 2, true, `${line} should cost far less than real code`);
+    }
+  });
+});
+
 describe('re-reading', () => {
   test('returning after a gap is a new viewing episode', () => {
     const ledger = new LineLedger();

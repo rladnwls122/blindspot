@@ -222,7 +222,7 @@ li { display:flex; flex-direction:column; gap:2px; }
       ${metricRow('Coverage', s.coverage, true)}
       ${metricRow('Critical', s.critical, s.measured.critical)}
       ${metricRow('New code', s.newCode, s.measured.newCode)}
-      ${metricRow('AI-generated', s.ai, s.measured.ai)}
+      ${metricRow('Machine-written', s.ai, s.measured.ai)}
     </div>
   </section>
 

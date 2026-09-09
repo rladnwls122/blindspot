@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { findGitContext, type GitContext } from './git';
+import { canonicalPath } from './paths';
 
 /**
  * Where Blindspot is running.
@@ -15,12 +16,24 @@ export interface WorkspaceContext {
   root: string;
   /** Absolute path where per-clone / per-folder state is written. */
   stateDir: string;
+  /**
+   * Where a previous version of this extension would have written the state
+   * for the same folder, when that is somewhere else. Read from once, never
+   * written to, so an upgrade does not look like a workspace nobody has read.
+   */
+  legacyStateDir: string | null;
   git: GitContext | null;
 }
 
 export function workspaceFromGit(git: GitContext): WorkspaceContext {
   // Inside the git directory: per-clone, never committed, gone with the clone.
-  return { root: git.root, stateDir: path.join(git.gitDir, 'blindspot'), git };
+  // Nothing is hashed here, so there is no older place to look.
+  return { root: git.root, stateDir: path.join(git.gitDir, 'blindspot'), legacyStateDir: null, git };
+}
+
+/** The 12 hex characters a folder's state directory is named after. */
+function folderKey(root: string): string {
+  return createHash('sha256').update(root.toLowerCase()).digest('hex').slice(0, 12);
 }
 
 /**
@@ -29,9 +42,16 @@ export function workspaceFromGit(git: GitContext): WorkspaceContext {
  * a dot-directory into someone's project is not this extension's call.
  */
 export function workspaceWithoutGit(folder: string, home = os.homedir()): WorkspaceContext {
-  const root = path.resolve(folder);
-  const key = createHash('sha256').update(root.toLowerCase()).digest('hex').slice(0, 12);
-  return { root, stateDir: path.join(home, '.blindspot', key), git: null };
+  const given = path.resolve(folder);
+  // A folder can be reached by more than one name — through a symlink, a
+  // junction, or an 8.3 short name — and the hash is what decides where the
+  // reading is kept. Two names meant two histories, and opening the project
+  // the other way looked exactly like never having read any of it. The
+  // canonical name is the one all of them agree on.
+  const root = canonicalPath(given);
+  const stateDir = path.join(home, '.blindspot', folderKey(root));
+  const legacy = path.join(home, '.blindspot', folderKey(given));
+  return { root, stateDir, legacyStateDir: legacy === stateDir ? null : legacy, git: null };
 }
 
 /** The workspace for an open folder: its repository if it is in one, else itself. */
@@ -41,23 +61,8 @@ export async function findWorkspace(folder: string): Promise<WorkspaceContext> {
 }
 
 /**
- * The key everything inside a root is stored under: the path relative to that
- * root, with forward slashes, or null when the file is not under it at all.
- *
- * The evidence, the report, the decorations and the hover all key on this, so
- * they only agree while they compute it the same way — which is why it is one
- * function rather than the four near-copies it used to be. Two of those copies
- * were missing the absolute-path rejection, and on Windows `path.relative`
- * between two drives returns an absolute path rather than one starting with
- * `..`: a file on `D:` was accepted as belonging to a repository on `C:`, and
- * the evidence collected for it was written under a key nothing could ever
- * read back.
+ * The key everything inside a root is stored under lives in `./paths` as
+ * `relativeKey`. The evidence, the report, the decorations and the hover all
+ * key on this, so they only agree while they compute it the same way — which
+ * is why it is one function rather than the four near-copies it used to be.
  */
-export function relativeToRoot(root: string, fsPath: string): string | null {
-  const rel = path.relative(root, fsPath).split(path.sep).join('/');
-  if (!rel || path.isAbsolute(rel) || /^[a-zA-Z]:/.test(rel)) return null;
-  // Only a leading `..` segment means "outside"; a file really named `..cache`
-  // is inside, and `startsWith('..')` used to throw it away.
-  if (rel.split('/')[0] === '..') return null;
-  return rel;
-}

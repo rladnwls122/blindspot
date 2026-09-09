@@ -3,6 +3,22 @@ import type { FileDiff } from './types';
 const HUNK = /^@@+ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/;
 
 /**
+ * The mode of the file's new side, from the header lines that carry one:
+ * `index a..b 100644` when the mode is unchanged, `new file mode`, `new mode`
+ * (the old mode is on its own `old mode` line), and `deleted file mode` for
+ * the side that is gone.
+ */
+const NEW_MODE = /^(?:index [0-9a-f]+\.\.[0-9a-f]+ |new file mode |new mode |deleted file mode )(\d{6})$/;
+
+/**
+ * A gitlink (submodule pointer) or a symlink. Their "lines" are a commit hash
+ * and a link target: nothing an editor opens, so nothing anyone can read, and
+ * counting them puts an unread line in the report that can never be cleared —
+ * a commit that only bumps a submodule would score 0%.
+ */
+const NOT_TEXT_MODES = new Set(['160000', '120000']);
+
+/**
  * Parse `git diff --unified=0 --no-color` into per-file changed-line sets.
  *
  * We only care about line numbers in the *new* file, because that is what the
@@ -12,8 +28,8 @@ const HUNK = /^@@+ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/;
  */
 export function parseUnifiedDiff(text: string): FileDiff[] {
   const files: FileDiff[] = [];
-  /** Submodule pointers: they are in the diff, but they are not files here. */
-  const gitlinks = new Set<FileDiff>();
+  /** Submodules and symlinks: they are in the diff, but they are not files here. */
+  const notText = new Set<FileDiff>();
   let current: FileDiff | null = null;
   let newLine = 0;
   let hunkHadDeletion = false;
@@ -68,12 +84,17 @@ export function parseUnifiedDiff(text: string): FileDiff[] {
         current.file = unquote(raw.slice('rename to '.length).trim());
         continue;
       }
-      // Mode 160000 is a gitlink: bumping a submodule prints `+Subproject
-      // commit <sha>` as an added line, and that line is in no file anyone can
-      // open. Counted, it was an unread line that could never be read — a
-      // blindspot the reader had no way to close.
-      if (raw.endsWith(' 160000')) {
-        gitlinks.add(current);
+      // Mode 160000 is a gitlink and 120000 a symlink: bumping a submodule
+      // prints `+Subproject commit <sha>` as an added line, and a symlink's
+      // "line" is its target. Neither is in a file anyone can open. Counted,
+      // they were unread lines that could never be read — a blindspot the
+      // reader had no way to close.
+      const mode = NEW_MODE.exec(raw);
+      if (mode) {
+        // A symlink that became a regular file is text now and is measured; a
+        // file that became a symlink is not. Only the new side decides.
+        if (NOT_TEXT_MODES.has(mode[1])) notText.add(current);
+        else notText.delete(current);
         continue;
       }
       // Anything else in a header (index, mode, similarity) is not content.
@@ -95,7 +116,7 @@ export function parseUnifiedDiff(text: string): FileDiff[] {
   flushHunk();
 
   return files.filter(
-    (f) => !gitlinks.has(f) && (f.addedLines.length > 0 || f.deletedLines > 0 || f.binary),
+    (f) => !notText.has(f) && (f.addedLines.length > 0 || f.deletedLines > 0 || f.binary),
   );
 }
 
@@ -149,11 +170,21 @@ export function unquote(p: string): string {
   return Buffer.from(bytes).toString('utf8');
 }
 
+/** A quoted path as git writes it: `"` … `"` with backslash escapes inside. */
+const NEW_PATH_QUOTED = / ("(?:[^"\\]|\\.)*")$/;
+const OLD_PATH_QUOTED = /^"(?:[^"\\]|\\.)*" (.+)$/;
+
 function parseDiffGitPath(line: string): string {
-  // `diff --git a/x b/x`, with quoting when the path has spaces.
   const rest = line.slice('diff --git '.length);
-  const quoted = rest.match(/^"(.+)" "(.+)"$/);
-  if (quoted) return stripPrefix(`"${quoted[2]}"`);
+  // Either side may be quoted on its own: a rename from an ASCII name to a
+  // Korean one quotes only the new path.
+  const tail = NEW_PATH_QUOTED.exec(rest);
+  if (tail) return stripPrefix(tail[1]);
+  const head = OLD_PATH_QUOTED.exec(rest);
+  if (head) return stripPrefix(head[1]);
+  // Both bare. `a/x b/x` splits in the middle; a bare rename between names
+  // with spaces is ambiguous here and is settled by the `rename to` or `+++`
+  // line that follows.
   const half = Math.floor(rest.length / 2);
   const a = rest.slice(0, half).trim();
   const b = rest.slice(half).trim();
